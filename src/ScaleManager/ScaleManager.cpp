@@ -87,7 +87,9 @@ void ScaleManager::notifyCallback(
   str += ", Characteristic = " + pRemoteCharacteristic->getUUID().toString();
 
   ScaleData sData = instance->parseScaleData(pData, length);
-  instance->printScaleData(sData);
+  // instance->printScaleData(sData);
+
+  instance->latestWeight = sData.weightGrams;
 }
 
 bool ScaleManager::connectToServer() {
@@ -266,7 +268,38 @@ bool ScaleManager::tare() {
   }
 };
 
-bool startTimer();
-bool stopTimer();
-bool resetTimer();
-bool startAndTare();
+bool ScaleManager::startTimer() {
+  if (commandChar->writeValue(START_TIMER)) {
+    Serial.println("Tared Successfully");
+    return true;
+  } else {
+    return false;
+  }
+};
+
+bool ScaleManager::stopTimer() {
+  if (commandChar->writeValue(STOP_TIMER)) {
+    Serial.println("Stopped Timer Successfully");
+    return true;
+  } else {
+    return false;
+  }
+};
+
+bool ScaleManager::resetTimer() {
+  if (commandChar->writeValue(RESET_TIMER)) {
+    Serial.println("Reset Timer Successfully");
+    return true;
+  } else {
+    return false;
+  }
+};
+
+bool ScaleManager::startAndTare() {
+  if (commandChar->writeValue(START_AND_TARE)) {
+    Serial.println("Started Timer and Tared Successfully");
+    return true;
+  } else {
+    return false;
+  }
+};

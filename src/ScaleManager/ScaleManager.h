@@ -1,4 +1,8 @@
+#ifndef SCALE_MANAGER_H
+#define SCALE_MANAGER_H
+
 #include <NimBLEDevice.h>
+#include <atomic>
 
 struct ScaleData {
   uint32_t milliseconds;
@@ -24,6 +28,8 @@ public:
   bool isConnected() const { return connected; }
   void onLoop();
 
+  float getWeight() const { return latestWeight.load(); }
+
   void onClientConnect();
   void onClientConnectFail(int reason);
   void onClientDisconnect(int reason);
@@ -42,6 +48,8 @@ private:
   static constexpr int NOTIFICATION_INTERVAL = 100;
 
   static ScaleManager *instance;
+
+  std::atomic<float> latestWeight{0.0f};
 
   bool connectToServer();
 
@@ -119,3 +127,5 @@ public:
 private:
   ScaleManager *sManager;
 };
+
+#endif
