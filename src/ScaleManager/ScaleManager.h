@@ -45,7 +45,7 @@ public:
 
 private:
   static constexpr int SCAN_TIME_MS = 5000;
-  static constexpr int NOTIFICATION_INTERVAL = 100;
+  static constexpr int NOTIFICATION_INTERVAL = 20;
 
   static ScaleManager *instance;
 
@@ -72,7 +72,7 @@ private:
 
   bool doConnect = false;
   bool connected = false;
-  unsigned long lastNotification = 0;
+  ulong lastNotification = 0;
 
   static BLEUUID serviceUUID;
   static BLEUUID commandUUID;

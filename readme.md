@@ -12,6 +12,9 @@ autobru automatically monitors coffee shot weight using a Bluetooth-enabled BOOK
 - Reads real-time weight and flow rate data
 - Battery level monitoring for connected scale
 - Automated shot control based on target weight
+- WebSocket-based real-time weight updates
+- Asyncronous web server for control and monitoring
+- RESTful API endpoints for scale control
 - Future integration planned with bru coffee brewing/bean tracking PWA
 
 ## Hardware Requirements
@@ -24,6 +27,8 @@ autobru automatically monitors coffee shot weight using a Bluetooth-enabled BOOK
 ## Dependencies
 
 - [NimBLE-Arduino](https://github.com/h2zero/NimBLE-Arduino) - Lightweight Bluetooth LE library
+- [ESPAsyncWebServer](https://github.com/me-no-dev/ESPAsyncWebServer) - Async HTTP and WebSocket server
+- [AsyncTCP](https://github.com/me-no-dev/AsyncTCP) - Async TCP library for ESP32
 
 ## Setup
 
@@ -37,15 +42,31 @@ The device will automatically:
 1. Scan for BOOKOO scales
 2. Connect when found
 3. Begin receiving weight measurements
-4. Monitor flow rate and weight data
+4. Start the web server for control and monitoring
+5. Enable WebSocket connection for real-time data
+
+## Web Interface
+
+The ESP32 hosts a web interface accessible via its IP address, offering:
+- Real-time weight display via WebSocket
+- Scale control (tare, timer functions)
+- RESTful API endpoints for automation
+
+API Endpoints:
+- `/weight` - Get current weight
+- `/tare` - Tare the scale
+- `/start-timer` - Start the timer
+- `/stop-timer` - Stop the timer
+- `/reset-timer` - Reset the timer
+- `/start-and-tare` - Start timer and tare
 
 ## Status
 
 This is currently a work in progress. Future updates will include:
 - Integration with bru PWA
 - Configurable target weights
-- Detailed brewing analytics
 - Remote control capabilities
+- Web interface features
 
 ## License
 
