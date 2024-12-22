@@ -87,13 +87,13 @@ void ScaleManager::notifyCallback(
   str += ", Characteristic = " + pRemoteCharacteristic->getUUID().toString();
 
   ScaleData sData = instance->parseScaleData(pData, length);
-  // instance->printScaleData(sData);
 
   instance->latestWeight = sData.weightGrams;
+  instance->latestTime = sData.milliseconds;
+  instance->latestFlowRate = sData.flowRate;
 }
 
 bool ScaleManager::connectToServer() {
-
   if (pClient != nullptr) {
     pClient = BLEDevice::getClientByPeerAddress(advDevice->getAddress());
     if (pClient) {

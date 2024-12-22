@@ -29,6 +29,8 @@ public:
   void onLoop();
 
   float getWeight() const { return latestWeight.load(); }
+  float getTime() const { return latestTime.load(); }
+  float getFlowRate() const { return latestFlowRate.load(); }
 
   void onClientConnect();
   void onClientConnectFail(int reason);
@@ -50,6 +52,8 @@ private:
   static ScaleManager *instance;
 
   std::atomic<float> latestWeight{0.0f};
+  std::atomic<uint32_t> latestTime{0};
+  std::atomic<float> latestFlowRate{0.0f};
 
   bool connectToServer();
 

@@ -74,6 +74,8 @@ void WebAPI::setupRoutes() {
         </head>
         <body>
             <h1>Weight: <span id="weight">0.00</span>g</h1>
+            <h1>Time: <span id="time">0</span>s</h1>
+            <h1>Flow Rate: <span id="flow-rate">0</span>g/s</h1>
             <button onclick="fetch('/tare')">Tare</button>
             <button onclick="fetch('/start-timer')">Start Timer</button>
             <button onclick="fetch('/stop-timer')">Stop Timer</button>
@@ -83,7 +85,10 @@ void WebAPI::setupRoutes() {
             <script>
                 let ws = new WebSocket('ws://' + window.location.hostname + '/ws');
                 ws.onmessage = function(event) {
-                    document.getElementById('weight').textContent = event.data;
+                    const data = JSON.parse(event.data);
+                    document.getElementById('weight').textContent = data.weight;
+                    document.getElementById('time').textContent = (data.time / 1000).toFixed(1);
+                    document.getElementById('flow-rate').textContent = data.flowRate;
                 };
             </script>
         </body>
@@ -104,7 +109,14 @@ void WebAPI::onLoop() {
   if (currentMillis - lastWebSocketUpdate >= WEBSOCKET_INTERVAL) {
     lastWebSocketUpdate = currentMillis;
     if (ws.count() > 0 && sManager->isConnected()) {
-      ws.textAll(String(sManager->getWeight(), 2));
+      String jsonData = "{\"weight\":";
+      jsonData += String(sManager->getWeight(), 1);
+      jsonData += ",\"time\":";
+      jsonData += String(sManager->getTime());
+      jsonData += ",\"flowRate\":";
+      jsonData += String(sManager->getFlowRate(), 1);
+      jsonData += "}";
+      ws.textAll(jsonData);
     }
   }
 }

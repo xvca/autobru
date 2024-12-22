@@ -7,6 +7,7 @@ private:
   AsyncWebServer server;
   AsyncWebSocket ws;
   ScaleManager *sManager;
+
   ulong lastWebSocketUpdate = 0;
   const ushort WEBSOCKET_INTERVAL = 100;
 
