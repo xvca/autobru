@@ -4,6 +4,9 @@
 
 class WebAPI {
 private:
+  WebAPI();
+  static WebAPI *instance;
+
   AsyncWebServer server;
   AsyncWebSocket ws;
   ScaleManager *sManager;
@@ -16,7 +19,13 @@ private:
   void setupWebSocket();
 
 public:
-  WebAPI(ScaleManager *manager);
   void begin();
-  void onLoop();
+  void update();
+
+  static WebAPI *getInstance() {
+    if (!instance) {
+      instance = new WebAPI();
+    }
+    return instance;
+  }
 };

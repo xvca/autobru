@@ -21,12 +21,17 @@ class ClientCallbacks;
 
 class ScaleManager {
 public:
-  ScaleManager();
-  ~ScaleManager();
+  static ScaleManager *getInstance() {
+    if (!instance) {
+      instance = new ScaleManager();
+    }
+    return instance;
+  }
 
-  void init();
+  void begin();
+  void update();
+
   bool isConnected() const { return connected; }
-  void onLoop();
 
   float getWeight() const { return latestWeight.load(); }
   float getTime() const { return latestTime.load(); }
@@ -49,6 +54,7 @@ private:
   static constexpr int SCAN_TIME_MS = 5000;
   static constexpr int NOTIFICATION_INTERVAL = 20;
 
+  ScaleManager();
   static ScaleManager *instance;
 
   std::atomic<float> latestWeight{0.0f};

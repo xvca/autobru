@@ -2,8 +2,7 @@
 #include "WebApi.h"
 #include "credentials.h"
 
-WebAPI::WebAPI(ScaleManager *manager)
-    : server(80), ws("/ws"), sManager(manager), lastWebSocketUpdate(0) {}
+WebAPI::WebAPI() : server(80), ws("/ws"), lastWebSocketUpdate(0) {}
 
 void WebAPI::setupWiFi() {
   WiFi.mode(WIFI_STA);
@@ -104,7 +103,7 @@ void WebAPI::begin() {
   server.begin();
 }
 
-void WebAPI::onLoop() {
+void WebAPI::update() {
   unsigned long currentMillis = millis();
   if (currentMillis - lastWebSocketUpdate >= WEBSOCKET_INTERVAL) {
     lastWebSocketUpdate = currentMillis;

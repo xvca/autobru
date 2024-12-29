@@ -4,21 +4,11 @@ BLEUUID ScaleManager::serviceUUID("0FFE");
 BLEUUID ScaleManager::commandUUID("FF12");
 BLEUUID ScaleManager::weightUUID("FF11");
 
-ScaleManager *ScaleManager::instance = nullptr;
-
 ScaleManager::ScaleManager()
     : pClient(nullptr), pScan(nullptr), advDevice(nullptr),
       commandChar(nullptr), weightChar(nullptr), clientCallbacks(nullptr),
       scanCallbacks(nullptr) {
   instance = this;
-}
-
-ScaleManager::~ScaleManager() {
-  if (pClient && connected) {
-    pClient->disconnect();
-  }
-  delete clientCallbacks;
-  delete scanCallbacks;
 }
 
 void ScaleManager::onClientConnect() {
@@ -221,17 +211,17 @@ void ScaleManager::printScaleData(const ScaleData &data) {
   Serial.println(data.milliseconds);
 
   Serial.print(F("Weight (g): "));
-  Serial.println(data.weightGrams, 2); // 2 decimal places
+  Serial.println(data.weightGrams, 2);
 
   Serial.print(F("Flow rate (g/s): "));
-  Serial.println(data.flowRate, 2); // 2 decimal places
+  Serial.println(data.flowRate, 2);
 
   Serial.print(F("Battery (%): "));
   Serial.println(data.batteryPercent);
   Serial.println(F("----------------------"));
 }
 
-void ScaleManager::init() {
+void ScaleManager::begin() {
   BLEDevice::init("autobru-client");
 
   pScan = BLEDevice::getScan();
@@ -245,7 +235,7 @@ void ScaleManager::init() {
   pScan->start(SCAN_TIME_MS);
 }
 
-void ScaleManager::onLoop() {
+void ScaleManager::update() {
   if (doConnect) {
     if (connectToServer()) {
       Serial.println("Successfully connected to scale");

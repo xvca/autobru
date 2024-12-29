@@ -2,10 +2,6 @@
 
 An ESP32-based automatic coffee brewing control system that interfaces with Bluetooth scales and Breville Dual Boiler espresso machines.
 
-## Overview
-
-autobru automatically monitors coffee shot weight using a Bluetooth-enabled BOOKOO scale and can stop the shot at a target weight by controlling the brew switch on a Breville Dual Boiler espresso machine.
-
 ## Features
 
 - Connects to BOOKOO Bluetooth scales
@@ -23,6 +19,24 @@ autobru automatically monitors coffee shot weight using a Bluetooth-enabled BOOK
 - Breville Dual Boiler espresso machine
 - BOOKOO Bluetooth coffee scale
 - Basic wiring for brew switch control
+
+## Hardware Details
+
+The custom PCB includes:
+
+- 2x JST S11B-PH-K-S connectors
+  - One accepts stock female connector from machine
+  - One connects PCB to mainboard
+- ESP32-S3-MINI module
+- Mini360 buck converter (12V to 5V)
+- 4-channel optocoupler for button control
+  - Only one channel needed for brew control
+  - Any brew button can stop an active brew
+  - e.g. 2-cup start → manual stop is valid
+
+The PCB design allows for non-destructive installation by intercepting the stock button panel connector. Power is drawn from the machine's 12V line, converted to 5V for the ESP32.
+
+The brew control is simplified since the Breville Dual Boiler allows any brew button to stop an active shot - you don't need to use the same button that started the brew to stop it.
 
 ## Dependencies
 
