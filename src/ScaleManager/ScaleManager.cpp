@@ -1,8 +1,9 @@
 #include "ScaleManager.h"
 
-BLEUUID ScaleManager::serviceUUID("0FFE");
-BLEUUID ScaleManager::commandUUID("FF12");
-BLEUUID ScaleManager::weightUUID("FF11");
+ScaleManager *ScaleManager::instance = nullptr;
+NimBLEUUID ScaleManager::serviceUUID("0FFE");
+NimBLEUUID ScaleManager::commandUUID("FF12");
+NimBLEUUID ScaleManager::weightUUID("FF11");
 
 ScaleManager::ScaleManager()
     : pClient(nullptr), pScan(nullptr), advDevice(nullptr),
@@ -17,18 +18,12 @@ void ScaleManager::onClientConnect() {
 }
 
 void ScaleManager::onClientConnectFail(int reason) {
-  Serial.printf("%s Failed to connect, reason = %d - Starting scan\n",
-                pClient->getPeerAddress().toString().c_str(), reason);
-
   doConnect = false;
   advDevice = nullptr;
   pScan->start(SCAN_TIME_MS, false, true);
 }
 
 void ScaleManager::onClientDisconnect(int reason) {
-  Serial.printf("%s Disconnected, reason = %d - Starting scan\n",
-                pClient->getPeerAddress().toString().c_str(), reason);
-
   connected = false;
   doConnect = false;
   advDevice = nullptr;
@@ -38,24 +33,34 @@ void ScaleManager::onClientDisconnect(int reason) {
   pScan->start(SCAN_TIME_MS, false, true);
 }
 
-void ScaleManager::onScanResult(const BLEAdvertisedDevice *advertisedDevice) {
-  if (advertisedDevice->getName().length() &&
-      advertisedDevice->getName().rfind("BOOKOO", 0) == 0) {
-    Serial.printf("Found Our Scale\n");
+void ScaleManager::onScanResult(
+    const NimBLEAdvertisedDevice *advertisedDevice) {
+
+  if (!advertisedDevice || !pScan) {
+    return;
+  }
+
+  if (!advertisedDevice->haveName()) {
+    return;
+  }
+
+  const std::string &name = advertisedDevice->getName();
+  if (name.rfind("BOOKOO", 0) == 0) {
     pScan->stop();
     advDevice = advertisedDevice;
     doConnect = true;
   }
 }
 
-void ScaleManager::onScanEnd(const BLEScanResults &results, int reason) {
-  Serial.printf("Scan Ended, reason: %d, device count: %d; Restarting scan\n",
-                reason, results.getCount());
-  pScan->start(SCAN_TIME_MS, false, true);
+void ScaleManager::onScanEnd(const NimBLEScanResults &results, int reason) {
+
+  if (!doConnect) {
+    pScan->start(SCAN_TIME_MS, false);
+  }
 }
 
 void ScaleManager::notifyCallback(
-    BLERemoteCharacteristic *pRemoteCharacteristic, uint8_t *pData,
+    NimBLERemoteCharacteristic *pRemoteCharacteristic, uint8_t *pData,
     size_t length, bool isNotify) {
 
   if (!instance)
@@ -85,29 +90,24 @@ void ScaleManager::notifyCallback(
 
 bool ScaleManager::connectToServer() {
   if (pClient != nullptr) {
-    pClient = BLEDevice::getClientByPeerAddress(advDevice->getAddress());
+    pClient = NimBLEDevice::getClientByPeerAddress(advDevice->getAddress());
     if (pClient) {
       if (!pClient->connect(advDevice, false)) {
-        Serial.printf("Reconnect failed\n");
         pScan->start(SCAN_TIME_MS, false, true);
         doConnect = false;
         return false;
       }
-      Serial.printf("Reconnected client\n");
     } else {
-      pClient = BLEDevice::getDisconnectedClient();
+      pClient = NimBLEDevice::getDisconnectedClient();
     }
   }
 
   if (!pClient) {
-    if (BLEDevice::getCreatedClientCount() >= NIMBLE_MAX_CONNECTIONS) {
-      Serial.printf("Max clients reached - no more connections available\n");
+    if (NimBLEDevice::getCreatedClientCount() >= NIMBLE_MAX_CONNECTIONS) {
       return false;
     }
 
-    pClient = BLEDevice::createClient();
-
-    Serial.printf("New client created\n");
+    pClient = NimBLEDevice::createClient();
 
     clientCallbacks = new ClientCallbacks(this);
 
@@ -118,8 +118,7 @@ bool ScaleManager::connectToServer() {
     pClient->setConnectTimeout(5 * 1000);
 
     if (!pClient->connect(advDevice)) {
-      BLEDevice::deleteClient(pClient);
-      Serial.printf("Failed to connect, deleted client\n");
+      NimBLEDevice::deleteClient(pClient);
 
       return false;
     }
@@ -127,41 +126,27 @@ bool ScaleManager::connectToServer() {
 
   if (!pClient->isConnected()) {
     if (!pClient->connect(advDevice)) {
-      Serial.printf("Failed to connect\n");
       return false;
     }
   }
 
-  Serial.printf("Connected to: %s RSSI: %d\n",
-                pClient->getPeerAddress().toString().c_str(),
-                pClient->getRssi());
-
-  BLERemoteService *pRemoteService = pClient->getService(serviceUUID);
+  NimBLERemoteService *pRemoteService = pClient->getService(serviceUUID);
   if (pRemoteService == nullptr) {
-    Serial.printf("Failed to find service with UUID: %s\n",
-                  serviceUUID.toString().c_str());
     pClient->disconnect();
     return false;
   }
-  Serial.println("Found service");
 
   commandChar = pRemoteService->getCharacteristic(commandUUID);
   if (commandChar == nullptr) {
-    Serial.printf("Failed to find Command Characteristic with UUID: %s\n",
-                  commandUUID.toString().c_str());
     pClient->disconnect();
     return false;
   }
-  Serial.println("Found Command Characteristic");
 
   weightChar = pRemoteService->getCharacteristic(weightUUID);
   if (!weightChar->canRead()) {
-    Serial.printf("Failed to read from Weight Characteristic with UUID: %s\n",
-                  weightUUID.toString().c_str());
     pClient->disconnect();
     return false;
   }
-  Serial.println("Found Weight Characteristic");
 
   if (weightChar->canNotify())
     weightChar->subscribe(true, notifyCallback);
@@ -229,17 +214,15 @@ void ScaleManager::begin() {
   scanCallbacks = new ScanCallbacks(this);
 
   pScan->setScanCallbacks(scanCallbacks);
-  pScan->setInterval(1349);
-  pScan->setWindow(449);
-  pScan->setActiveScan(true);
+  pScan->setInterval(2000);
+  pScan->setWindow(100);
+  pScan->setActiveScan(false);
   pScan->start(SCAN_TIME_MS);
 }
 
 void ScaleManager::update() {
   if (doConnect) {
-    if (connectToServer()) {
-      Serial.println("Successfully connected to scale");
-    }
+    connectToServer();
   }
 }
 
@@ -251,7 +234,6 @@ byte START_AND_TARE[6] = {0x03, 0x0a, 0x07, 0x00, 0x00, 0x00};
 
 bool ScaleManager::tare() {
   if (commandChar->writeValue(TARE)) {
-    Serial.println("Tared Successfully");
     return true;
   } else {
     return false;
@@ -260,7 +242,6 @@ bool ScaleManager::tare() {
 
 bool ScaleManager::startTimer() {
   if (commandChar->writeValue(START_TIMER)) {
-    Serial.println("Tared Successfully");
     return true;
   } else {
     return false;
@@ -269,7 +250,6 @@ bool ScaleManager::startTimer() {
 
 bool ScaleManager::stopTimer() {
   if (commandChar->writeValue(STOP_TIMER)) {
-    Serial.println("Stopped Timer Successfully");
     return true;
   } else {
     return false;
@@ -278,7 +258,6 @@ bool ScaleManager::stopTimer() {
 
 bool ScaleManager::resetTimer() {
   if (commandChar->writeValue(RESET_TIMER)) {
-    Serial.println("Reset Timer Successfully");
     return true;
   } else {
     return false;
@@ -287,7 +266,6 @@ bool ScaleManager::resetTimer() {
 
 bool ScaleManager::startAndTare() {
   if (commandChar->writeValue(START_AND_TARE)) {
-    Serial.println("Started Timer and Tared Successfully");
     return true;
   } else {
     return false;
