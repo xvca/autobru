@@ -1,6 +1,7 @@
 #ifndef SCALE_MANAGER_H
 #define SCALE_MANAGER_H
 
+#include "BrewManager.h"
 #include <NimBLEDevice.h>
 #include <atomic>
 
@@ -15,6 +16,7 @@ struct ScaleData {
   uint8_t flowRateSmoothing;
 };
 
+class BrewManager;
 class ScaleManager;
 class ScanCallbacks;
 class ClientCallbacks;
@@ -31,10 +33,16 @@ public:
   void begin();
   void update();
 
+  void disconnectScale();
+  void connectScale();
+
+  bool preScanning() const { return doScan; }
+  bool isScanning() const { return pScan->isScanning(); }
+  bool isConnecting() const { return doConnect; }
   bool isConnected() const { return connected; }
 
   float getWeight() const { return latestWeight.load(); }
-  float getTime() const { return latestTime.load(); }
+  uint32_t getTime() const { return latestTime.load(); }
   float getFlowRate() const { return latestFlowRate.load(); }
 
   void onClientConnect();
@@ -83,9 +91,12 @@ private:
   ClientCallbacks *clientCallbacks;
   ScanCallbacks *scanCallbacks;
 
+  bool doScan = false;
   bool doConnect = false;
   bool connected = false;
   ulong lastNotification = 0;
+
+  BrewManager *bManager;
 
   static NimBLEUUID serviceUUID;
   static NimBLEUUID commandUUID;

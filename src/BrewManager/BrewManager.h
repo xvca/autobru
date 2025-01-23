@@ -5,6 +5,8 @@
 #include <Arduino.h>
 #include <Preferences.h>
 
+class ScaleManager;
+
 /**
  * IDLE         -> Waiting for user input
  * PREINFUSION  -> Brew switch being held for manual-duration preinfusion
@@ -20,6 +22,13 @@ enum BrewState { IDLE, PREINFUSION, BREWING, DRIPPING };
  */
 enum PreinfusionMode { SIMPLE, WEIGHT_TRIGGERED };
 
+struct BrewPrefs {
+  bool isEnabled;
+  float preset1;
+  float preset2;
+  PreinfusionMode pMode;
+};
+
 class BrewManager {
 private:
   BrewManager() { loadSettings(); };
@@ -28,11 +37,23 @@ private:
 
   static BrewManager *instance;
 
+  bool enabled = true;
+  bool active = false;
+
+  ulong lastActiveTime = 0;
+
   // Pin definitions
-  static constexpr uint8_t MANUAL_PIN = 5;
-  static constexpr uint8_t TWO_CUP_PIN = 6;
-  static constexpr uint8_t ONE_CUP_PIN = 7;
-  static constexpr uint8_t BREW_SWITCH_PIN = 8;
+#ifdef DEBUG_BUILD
+  static constexpr uint8_t MANUAL_PIN = 25;
+  static constexpr uint8_t TWO_CUP_PIN = 26;
+  static constexpr uint8_t ONE_CUP_PIN = 32;
+  static constexpr uint8_t BREW_SWITCH_PIN = 33;
+#else
+  static constexpr uint8_t MANUAL_PIN = 1;
+  static constexpr uint8_t TWO_CUP_PIN = 2;
+  static constexpr uint8_t ONE_CUP_PIN = 3;
+  static constexpr uint8_t BREW_SWITCH_PIN = 4;
+#endif
 
   float targetWeight;
   float currentWeight;
@@ -41,6 +62,7 @@ private:
   BrewState state = IDLE;
   PreinfusionMode pMode;
 
+  static const unsigned int ACTIVITY_TIMEOUT = 10 * 60 * 1000;
   static const unsigned int MAX_SHOT_DURATION = 50 * 1000;
 
   static const unsigned long DEBOUNCE_DELAY = 500;
@@ -102,16 +124,21 @@ public:
   void update();
 
   BrewState getState() const { return state; }
-  PreinfusionMode getPreinfusionMode() const { return pMode; }
 
-  void setPreset1(float target);
-  void setPreset2(float target);
-  void setPreinfusionMode(PreinfusionMode pMode);
   void clearShotData();
 
-  bool startBrew(float target, bool triggerBrew);
+  void wake();
+
+  bool isActive() { return active; }
+
+  bool startBrew(float target = 40, bool triggerBrew = true);
   bool stopBrew();
   bool isBrewing() const { return state != IDLE; }
+
+  bool isEnabled() const { return enabled; }
+
+  BrewPrefs getPrefs();
+  void setPrefs(BrewPrefs prefs);
 
   unsigned long getBrewTime();
 };

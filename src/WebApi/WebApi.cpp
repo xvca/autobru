@@ -8,13 +8,15 @@ WebAPI::WebAPI() : server(80), ws("/ws"), lastWebSocketUpdate(0) {}
 
 void WebAPI::setupWiFi() {
   WiFi.mode(WIFI_STA);
-  WiFi.setHostname("autobru-esp32");
+  WiFi.setHostname("autobru");
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
   while (WiFi.waitForConnectResult() != WL_CONNECTED) {
     delay(5000);
     ESP.restart();
   }
+
+  DEBUG_PRINTF("Connected to WiFi, IP: %s\n", WiFi.localIP().toString());
 }
 
 void WebAPI::setupWebSocket() {
@@ -34,136 +36,194 @@ void WebAPI::setupWebSocket() {
 }
 
 void WebAPI::setupRoutes() {
-  // server.on("/tare", HTTP_GET, [this](AsyncWebServerRequest *request) {
-  //   if (!sManager) {
-  //     request->send(400, "text/plain", "Scale manager not initialized");
-  //     return;
-  //   }
-  //   if (!sManager->isConnected()) {
-  //     request->send(400, "text/plain", "Scale not connected");
-  //     return;
-  //   }
-  //   sManager->tare();
-  //   request->send(200, "text/plain", "Tare command received");
-  // });
+  auto handleError = [](AsyncWebServerRequest *request, int code,
+                        const char *message) {
+    AsyncWebServerResponse *response = request->beginResponse(
+        code, "application/json", "{\"error\": \"" + String(message) + "\"}");
+    response->addHeader("Access-Control-Allow-Origin", "*");
+    request->send(response);
+  };
 
-  // server.on("/start-timer", HTTP_GET, [this](AsyncWebServerRequest *request)
-  // {
-  //   if (!sManager) {
-  //     request->send(400, "text/plain", "Scale manager not initialized");
-  //     return;
-  //   }
-  //   if (!sManager->isConnected()) {
-  //     request->send(400, "text/plain", "Scale not connected");
-  //     return;
-  //   }
-  //   sManager->startTimer();
-  //   request->send(200, "text/plain", "Timer start command received");
-  // });
+  server.on(
+      "/start", HTTP_POST,
+      [this, &handleError](AsyncWebServerRequest *request) {
+        if (!bManager) {
+          handleError(request, 400, "Brew manager not initialized");
+          return false;
+        }
 
-  // server.on("/stop-timer", HTTP_GET, [this](AsyncWebServerRequest *request) {
-  //   if (!sManager) {
-  //     request->send(400, "text/plain", "Scale manager not initialized");
-  //     return;
-  //   }
-  //   if (!sManager->isConnected()) {
-  //     request->send(400, "text/plain", "Scale not connected");
-  //     return;
-  //   }
-  //   sManager->stopTimer();
-  //   request->send(200, "text/plain", "Timer stop command received");
-  // });
+        if (!bManager->isEnabled()) {
+          handleError(
+              request, 400,
+              "Brew control is currently disabled. Please enable in settings");
+          return false;
+        }
 
-  // server.on("/reset-timer", HTTP_GET, [this](AsyncWebServerRequest *request)
-  // {
-  //   if (!sManager) {
-  //     request->send(400, "text/plain", "Scale manager not initialized");
-  //     return;
-  //   }
-  //   if (!sManager->isConnected()) {
-  //     request->send(400, "text/plain", "Scale not connected");
-  //     return;
-  //   }
-  //   sManager->resetTimer();
-  //   request->send(200, "text/plain", "Timer reset command received");
-  // });
+        if (!request->hasParam("weight", true)) {
+          handleError(request, 400, "Missing target weight parameter");
+          return false;
+        }
 
-  // server.on(
-  //     "/start-and-tare", HTTP_GET, [this](AsyncWebServerRequest *request) {
-  //       if (!sManager) {
-  //         request->send(400, "text/plain", "Scale manager not initialized");
-  //         return;
-  //       }
-  //       if (!sManager->isConnected()) {
-  //         request->send(400, "text/plain", "Scale not connected");
-  //         return;
-  //       }
-  //       sManager->startAndTare();
-  //       request->send(200, "text/plain",
-  //                     "Tare and start timer command received");
-  //     });
+        float targetWeight =
+            request->getParam("weight", true)->value().toFloat();
+        if (targetWeight <= 0 || targetWeight > 100) {
+          handleError(request, 400,
+                      "Invalid target weight (must be between 0-100g)");
+          return false;
+        }
 
-  server.on("/start-brew", HTTP_GET, [this](AsyncWebServerRequest *request) {
-    if (!sManager) {
-      request->send(400, "text/plain", "Scale manager not initialized");
-      return;
-    }
-    if (!bManager) {
-      request->send(400, "text/plain", "Brew manager not initialized");
-      return;
-    }
-    if (!sManager->isConnected()) {
-      request->send(400, "text/plain", "Scale not connected");
-      return;
-    }
+        if (!bManager->startBrew(targetWeight)) {
+          if (bManager->isBrewing()) {
+            handleError(request, 409, "A brew is already running");
+            return false;
+          } else if (!bManager->isEnabled()) {
+            handleError(request, 403, "Brewing is currently disabled");
+            return false;
+          }
+          handleError(request, 500, "Failed to start brew");
+          return false;
+        }
 
-    if (!request->hasParam("weight")) {
-      request->send(400, "text/plain", "Missing target weight parameter");
-      return;
-    }
+        AsyncWebServerResponse *response = request->beginResponse(
+            200, "application/json",
+            "{\"message\": \"Brew started\", \"target\": " +
+                String(targetWeight) + "}");
+        response->addHeader("Access-Control-Allow-Origin", "*");
+        request->send(response);
 
-    float targetWeight = request->getParam("weight")->value().toFloat();
-    if (targetWeight <= 0 || targetWeight > 100) {
-      request->send(400, "text/plain",
-                    "Invalid target weight (must be between 0-100g)");
-      return;
-    }
+        return true;
+      });
 
-    if (!bManager->startBrew(targetWeight, true)) {
-      request->send(500, "text/plain", "Failed to start brew");
-      return;
-    }
+  server.on(
+      "/stop", HTTP_POST, [this, &handleError](AsyncWebServerRequest *request) {
+        if (!bManager) {
+          handleError(request, 400, "Brew manager not initialized");
+          return false;
+        }
 
-    request->send(200, "text/plain",
-                  "Brew started with target: " + String(targetWeight) + "g");
-  });
+        if (!bManager->isEnabled()) {
+          handleError(
+              request, 400,
+              "Brew control is currently disabled. Please enable in settings");
+          return false;
+        }
 
-  server.on("/stop-brew", HTTP_GET, [this](AsyncWebServerRequest *request) {
-    if (!sManager) {
-      request->send(400, "text/plain", "Scale manager not initialized");
-      return;
-    }
-    if (!bManager) {
-      request->send(400, "text/plain", "Brew manager not initialized");
-      return;
-    }
+        bManager->stopBrew();
 
-    bManager->stopBrew();
+        AsyncWebServerResponse *response = request->beginResponse(
+            200, "application/json", "{\"message\": \"Brew stopped\"}");
+        response->addHeader("Access-Control-Allow-Origin", "*");
+        request->send(response);
 
-    request->send(200, "text/plain", "Brew Cancelled");
-    return;
-  });
+        return true;
+      });
 
-  server.on("/clear-data", HTTP_GET, [this](AsyncWebServerRequest *request) {
-    if (!bManager) {
-      request->send(400, "text/plain", "Brew manager not initialized");
-      return;
-    }
+  server.on(
+      "/clear-data", HTTP_POST,
+      [this, &handleError](AsyncWebServerRequest *request) {
+        if (!bManager) {
+          handleError(request, 400, "Brew manager not initialized");
+          return false;
+        }
 
-    bManager->clearShotData();
+        if (!bManager->isEnabled()) {
+          handleError(
+              request, 400,
+              "Brew control is currently disabled. Please enable in settings");
+          return false;
+        }
 
-    request->send(200, "text/plain", "Cleared all shot data");
-    return;
+        bManager->clearShotData();
+
+        AsyncWebServerResponse *response = request->beginResponse(
+            200, "application/json", "{\"message\": \"Shot data cleared\"}");
+        response->addHeader("Access-Control-Allow-Origin", "*");
+        request->send(response);
+
+        return true;
+      });
+
+  server.on("/wake", HTTP_POST,
+            [this, &handleError](AsyncWebServerRequest *request) {
+              if (!bManager->isActive()) {
+                bManager->wake();
+              } else {
+                handleError(request, 400, "Brew manager already active");
+                return;
+              }
+
+              AsyncWebServerResponse *response = request->beginResponse(
+                  200, "application/json", "{\"message\": \"Waking ESP\"}");
+              response->addHeader("Access-Control-Allow-Origin", "*");
+              request->send(response);
+
+              return;
+            });
+
+  server.on(
+      "/prefs", HTTP_POST,
+      [this, &handleError](AsyncWebServerRequest *request) {
+        if (!bManager) {
+          handleError(request, 400, "Brew manager not initialized");
+          return;
+        }
+
+        // Print all received parameters
+        if (!request->hasParam("isEnabled", true) ||
+            !request->hasParam("preset1", true) ||
+            !request->hasParam("preset2", true) ||
+            !request->hasParam("pMode", true)) {
+          handleError(request, 400, "Missing required parameters");
+          return;
+        }
+
+        BrewPrefs prefs;
+
+        prefs.isEnabled =
+            request->getParam("isEnabled", true)->value().equals("true");
+
+        prefs.preset1 = request->getParam("preset1", true)->value().toFloat();
+
+        prefs.preset2 = request->getParam("preset2", true)->value().toFloat();
+
+        prefs.pMode =
+            PreinfusionMode(request->getParam("pMode", true)->value().toInt());
+
+        bManager->setPrefs(prefs);
+
+        AsyncWebServerResponse *response = request->beginResponse(
+            200, "application/json", "{\"message\": \"Preferences updated\"}");
+        response->addHeader("Access-Control-Allow-Origin", "*");
+        request->send(response);
+      });
+
+  server.on(
+      "/prefs", HTTP_GET, [this, &handleError](AsyncWebServerRequest *request) {
+        if (!bManager) {
+          handleError(request, 400, "Brew manager not initialized");
+          return;
+        }
+
+        BrewPrefs prefs = bManager->getPrefs();
+        String response =
+            "{\"isEnabled\":" + String(prefs.isEnabled ? "true" : "false") +
+            ",\"preset1\":" + String(prefs.preset1) +
+            ",\"preset2\":" + String(prefs.preset2) +
+            ",\"pMode\":" + String(prefs.pMode) + "}";
+
+        AsyncWebServerResponse *resp =
+            request->beginResponse(200, "application/json", response);
+        resp->addHeader("Access-Control-Allow-Origin", "*");
+        request->send(resp);
+      });
+
+  // Add OPTIONS handlers for CORS
+  server.on("/start", HTTP_OPTIONS, [](AsyncWebServerRequest *request) {
+    AsyncWebServerResponse *response = request->beginResponse(204);
+    response->addHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    response->addHeader("Access-Control-Allow-Headers", "Content-Type");
+    response->addHeader("Access-Control-Allow-Origin", "*");
+    request->send(response);
   });
 }
 

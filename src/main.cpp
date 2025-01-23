@@ -1,6 +1,7 @@
 #include "BrewManager.h"
 #include "ScaleManager.h"
 #include "WebApi.h"
+#include "debug.h"
 #include <Adafruit_NeoPixel.h>
 #include <Arduino.h>
 #include <ArduinoOTA.h>
@@ -17,7 +18,6 @@ static WebAPI *webApi;
 Adafruit_NeoPixel pixels(NUM_LEDS, LED_PIN, NEO_GRB + NEO_KHZ800);
 
 void setup() {
-  // delay makes bootloop more noticeable if there is one
   Serial.begin(115200);
   delay(2000);
 
@@ -27,23 +27,29 @@ void setup() {
   pixels.setPixelColor(0, 255, 255, 255);
   pixels.show();
 
+  DEBUG_PRINTF("SETUP...\n");
+
   sManager = ScaleManager::getInstance();
+  bManager = BrewManager::getInstance();
+  webApi = WebAPI::getInstance();
 
   sManager->begin();
-
-  bManager = bManager->getInstance();
-
+  DEBUG_PRINTF("Started scale\n");
   bManager->begin();
-
-  webApi = webApi->getInstance();
-
+  DEBUG_PRINTF("Started brew\n");
   webApi->begin();
-
-  Serial.println("All managers started successfully");
+  DEBUG_PRINTF("Started web\n");
 }
 
 void loop() {
-  sManager->update();
-  bManager->update();
   webApi->update();
+
+  if (bManager->isEnabled())
+    bManager->update();
+
+  if (!bManager->isActive()) {
+    delay(100);
+  } else {
+    sManager->update();
+  }
 }

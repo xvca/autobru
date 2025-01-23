@@ -1,12 +1,13 @@
 #include "BrewManager.h"
 #include "ScaleManager.h"
+#include "debug.h"
 #include <ESPAsyncHTTPUpdateServer.h>
 #include <ESPAsyncWebServer.h>
 
 struct BrewMetrics {
   float weight;
   float flowRate;
-  float time;
+  ulong time;
   BrewState state;
 };
 

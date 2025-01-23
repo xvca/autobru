@@ -1,8 +1,0 @@
-{
-    "files.associations": {
-        "*.cpp": "cpp",
-        "new": "cpp",
-        "type_traits": "cpp",
-        "atomic": "cpp"
-    }
-}

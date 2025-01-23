@@ -20,7 +20,9 @@ void ScaleManager::onClientConnect() {
 void ScaleManager::onClientConnectFail(int reason) {
   doConnect = false;
   advDevice = nullptr;
-  pScan->start(SCAN_TIME_MS, false, true);
+
+  if (bManager->isActive())
+    doScan = true;
 }
 
 void ScaleManager::onClientDisconnect(int reason) {
@@ -30,7 +32,9 @@ void ScaleManager::onClientDisconnect(int reason) {
   weightChar->unsubscribe();
   commandChar = nullptr;
   weightChar = nullptr;
-  pScan->start(SCAN_TIME_MS, false, true);
+
+  if (bManager->isActive())
+    doScan = true;
 }
 
 void ScaleManager::onScanResult(
@@ -47,15 +51,15 @@ void ScaleManager::onScanResult(
   const std::string &name = advertisedDevice->getName();
   if (name.rfind("BOOKOO", 0) == 0) {
     pScan->stop();
+    doScan = false;
     advDevice = advertisedDevice;
     doConnect = true;
   }
 }
 
 void ScaleManager::onScanEnd(const NimBLEScanResults &results, int reason) {
-
   if (!doConnect) {
-    pScan->start(SCAN_TIME_MS, false);
+    pScan->start(SCAN_TIME_MS);
   }
 }
 
@@ -216,14 +220,29 @@ void ScaleManager::begin() {
   pScan->setScanCallbacks(scanCallbacks);
   pScan->setInterval(2000);
   pScan->setWindow(100);
-  pScan->setActiveScan(false);
-  pScan->start(SCAN_TIME_MS);
+  pScan->setActiveScan(true);
+
+  bManager = BrewManager::getInstance();
+}
+
+void ScaleManager::connectScale() {
+  if (!preScanning() && !isScanning() && !isConnecting())
+    doScan = true;
+}
+
+void ScaleManager::disconnectScale() {
+  if (pClient->isConnected())
+    pClient->disconnect();
 }
 
 void ScaleManager::update() {
-  if (doConnect) {
-    connectToServer();
+  if (doScan) {
+    doScan = false;
+    pScan->start(SCAN_TIME_MS);
   }
+
+  if (doConnect)
+    connectToServer();
 }
 
 byte TARE[6] = {0x03, 0x0a, 0x01, 0x00, 0x00, 0x08};
