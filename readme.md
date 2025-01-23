@@ -5,13 +5,13 @@ An ESP32-based automatic coffee brewing control system that interfaces with Blue
 ## Features
 
 - Connects to BOOKOO Bluetooth scales
-- Reads real-time weight and flow rate data
-- Battery level monitoring for connected scale
-- Automated shot control based on target weight
+- Reads real-time weight and flow rate data 
+- Automated shot control based on target weight with dynamic learning
 - WebSocket-based real-time weight updates
-- Asyncronous web server for control and monitoring
-- RESTful API endpoints for scale control
-- Future integration planned with bru coffee brewing/bean tracking PWA
+- Asynchronous web server for control and monitoring
+- RESTful API endpoints for complete control
+- Integration with [bru](https://github.com/xvca/bru) PWA for coffee brewing/bean tracking
+- Weight triggered Preinfusion mode that uses low pressure until the first drops of coffee are detected (as an alternative to preinfusing for a pre-defined duration)
 
 ## Hardware Requirements
 
@@ -66,13 +66,15 @@ The ESP32 hosts a web interface accessible via its IP address, offering:
 - Scale control (tare, timer functions)
 - RESTful API endpoints for automation
 
-API Endpoints:
-- `/weight` - Get current weight
-- `/tare` - Tare the scale
-- `/start-timer` - Start the timer
-- `/stop-timer` - Stop the timer
-- `/reset-timer` - Reset the timer
-- `/start-and-tare` - Start timer and tare
+## API Endpoints
+
+- `/prefs` - GET/POST brew preferences (enabled state, presets, preinfusion mode)
+- `/start` - POST to start a brew with target weight
+- `/stop` - POST to stop current brew
+- `/clear-data` - POST to clear stored shot data
+- `/wake` - POST to wake ESP from sleep mode
+
+The system includes a learning algorithm that tracks shot history and automatically adjusts timing to ensure the final brew weight matches the target weight. This compensation factor is stored and refined over time based on actual results.
 
 ## Status
 
