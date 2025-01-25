@@ -2,6 +2,7 @@
 #define SCALE_MANAGER_H
 
 #include "BrewManager.h"
+#include "debug.h"
 #include <NimBLEDevice.h>
 #include <atomic>
 
@@ -57,6 +58,7 @@ public:
   bool stopTimer();
   bool resetTimer();
   bool startAndTare();
+  bool beep();
 
 private:
   ScaleManager();

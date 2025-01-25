@@ -250,6 +250,7 @@ byte START_TIMER[6] = {0x03, 0x0a, 0x04, 0x00, 0x00, 0x0a};
 byte STOP_TIMER[6] = {0x03, 0x0a, 0x05, 0x00, 0x00, 0x0d};
 byte RESET_TIMER[6] = {0x03, 0x0a, 0x06, 0x00, 0x00, 0x0c};
 byte START_AND_TARE[6] = {0x03, 0x0a, 0x07, 0x00, 0x00, 0x00};
+byte BEEP[6] = {0x03, 0x0a, 0x02, 0x00, 0x03, 0x08};
 
 bool ScaleManager::tare() {
   if (commandChar->writeValue(TARE)) {
@@ -285,6 +286,14 @@ bool ScaleManager::resetTimer() {
 
 bool ScaleManager::startAndTare() {
   if (commandChar->writeValue(START_AND_TARE)) {
+    return true;
+  } else {
+    return false;
+  }
+};
+
+bool ScaleManager::beep() {
+  if (commandChar->writeValue(BEEP)) {
     return true;
   } else {
     return false;

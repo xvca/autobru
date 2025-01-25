@@ -136,6 +136,10 @@ void BrewManager::finalizeBrew() {
 
     saveSettings();
   }
+  for (int i = 3; i--;) {
+    sManager->beep();
+    delay(150);
+  }
 }
 
 void BrewManager::handleSimplePreinfusion() {

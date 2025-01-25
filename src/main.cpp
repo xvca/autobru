@@ -34,11 +34,11 @@ void setup() {
   webApi = WebAPI::getInstance();
 
   sManager->begin();
-  DEBUG_PRINTF("Started scale\n");
+  DEBUG_PRINTF("Started ScaleManager\n");
   bManager->begin();
-  DEBUG_PRINTF("Started brew\n");
+  DEBUG_PRINTF("Started BrewManager\n");
   webApi->begin();
-  DEBUG_PRINTF("Started web\n");
+  DEBUG_PRINTF("Started WebAPI\n");
 }
 
 void loop() {
