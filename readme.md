@@ -10,8 +10,9 @@ An ESP32-based automatic coffee brewing control system that interfaces with Blue
 - WebSocket-based real-time weight updates
 - Asynchronous web server for control and monitoring
 - RESTful API endpoints for complete control
-- Integration with [bru](https://github.com/xvca/bru) PWA for coffee brewing/bean tracking
+- Integration with [Bru](https://github.com/xvca/bru) PWA for coffee brewing/bean tracking
 - Weight triggered Preinfusion mode that uses low pressure until the first drops of coffee are detected (as an alternative to preinfusing for a pre-defined duration)
+- OTA Updates using ESPAsyncHTTPUpdateServer
 
 ## Hardware Requirements
 
@@ -42,7 +43,7 @@ The brew control is simplified since the Breville Dual Boiler allows any brew bu
 
 - [NimBLE-Arduino](https://github.com/h2zero/NimBLE-Arduino) - Lightweight Bluetooth LE library
 - [ESPAsyncWebServer](https://github.com/me-no-dev/ESPAsyncWebServer) - Async HTTP and WebSocket server
-- [AsyncTCP](https://github.com/me-no-dev/AsyncTCP) - Async TCP library for ESP32
+- [ESPAsyncHTTPUpdateServer](https://github.com/IPdotSetAF/ESPAsyncHTTPUpdateServer) - OTA Updates
 
 ## Setup
 
