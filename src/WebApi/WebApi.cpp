@@ -217,6 +217,33 @@ void WebAPI::setupRoutes() {
         request->send(resp);
       });
 
+  server.on("/data", HTTP_GET,
+            [this, &handleError](AsyncWebServerRequest *request) {
+              if (!bManager) {
+                handleError(request, 400, "Brew manager not initialized");
+                return;
+              }
+
+              const Shot *shots = bManager->getRecentShots();
+              float flowComp = bManager->getFlowCompFactor();
+
+              String response = "{\"shots\":[";
+              for (int i = 0; i < MAX_STORED_SHOTS; i++) {
+                if (i > 0)
+                  response += ",";
+                response +=
+                    "{\"targetWeight\":" + String(shots[i].targetWeight) +
+                    ",\"finalWeight\":" + String(shots[i].finalWeight) +
+                    ",\"lastFlowRate\":" + String(shots[i].lastFlowRate) + "}";
+              }
+              response += "],\"flowCompFactor\":" + String(flowComp) + "}";
+
+              AsyncWebServerResponse *resp =
+                  request->beginResponse(200, "application/json", response);
+              resp->addHeader("Access-Control-Allow-Origin", "*");
+              request->send(resp);
+            });
+
   // Add OPTIONS handlers for CORS
   server.on("/start", HTTP_OPTIONS, [](AsyncWebServerRequest *request) {
     AsyncWebServerResponse *response = request->beginResponse(204);
@@ -239,9 +266,33 @@ void WebAPI::begin() {
 }
 
 void WebAPI::update() {
+  if (millis() - lastWiFiCheck >= WIFI_CHECK_INTERVAL) {
+    checkWiFiConnection();
+    lastWiFiCheck = millis();
+  }
+
   if (millis() - lastWebSocketUpdate >= WEBSOCKET_INTERVAL) {
     broadcastBrewMetrics();
     lastWebSocketUpdate = millis();
+  }
+}
+
+void WebAPI::checkWiFiConnection() {
+  if (WiFi.status() != WL_CONNECTED) {
+    DEBUG_PRINTF("WiFi disconnected, attempting reconnection...\n");
+    WiFi.disconnect();
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+
+    // Wait up to 10 seconds for connection
+    int attempts = 0;
+    while (WiFi.status() != WL_CONNECTED && attempts < 10) {
+      delay(1000);
+      attempts++;
+    }
+
+    if (WiFi.status() == WL_CONNECTED) {
+      DEBUG_PRINTF("Reconnected to WiFi, IP: %s\n", WiFi.localIP().toString());
+    }
   }
 }
 

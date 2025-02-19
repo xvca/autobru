@@ -7,6 +7,13 @@
 
 class ScaleManager;
 
+static constexpr int MAX_STORED_SHOTS = 10;
+/**
+ * From personal experience using a spouted portafilter, flow comp would reach
+ * equilibrium at around 1.3
+ */
+static constexpr float DEFAULT_FLOW_COMP = 1.3;
+
 /**
  * IDLE         -> Waiting for user input
  * PREINFUSION  -> Brew switch being held for manual-duration preinfusion
@@ -27,6 +34,12 @@ struct BrewPrefs {
   float preset1;
   float preset2;
   PreinfusionMode pMode;
+};
+
+struct Shot {
+  float targetWeight;
+  float finalWeight;
+  float lastFlowRate;
 };
 
 class BrewManager {
@@ -83,20 +96,13 @@ private:
 
   Preferences preferences;
 
-  static constexpr int MAX_STORED_SHOTS = 10;
   static constexpr float LEARNING_RATE = 0.2;
-  static constexpr float MIN_FLOW_COMP = 0.2;
-  static constexpr float MAX_FLOW_COMP = 2.0;
+  static constexpr float MIN_FLOW_COMP = 0.5;
+  static constexpr float MAX_FLOW_COMP = 5.0;
   static constexpr unsigned long DRIP_SETTLE_TIME = 10 * 1000;
 
   float preset1;
   float preset2;
-
-  struct Shot {
-    float targetWeight;
-    float finalWeight;
-    float lastFlowRate;
-  };
 
   Shot recentShots[MAX_STORED_SHOTS];
   int currentShotIndex = 0;
@@ -141,6 +147,9 @@ public:
   void setPrefs(BrewPrefs prefs);
 
   unsigned long getBrewTime();
+
+  Shot *getRecentShots() { return recentShots; }
+  float getFlowCompFactor() { return flowCompFactor; }
 };
 
 #endif

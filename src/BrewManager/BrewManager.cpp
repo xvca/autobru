@@ -32,7 +32,7 @@ void BrewManager::saveSettings() {
 void BrewManager::loadSettings() {
   preferences.begin("brewsettings", true); // read-only
   enabled = preferences.getBool("enabled", true);
-  flowCompFactor = preferences.getFloat("flowcomp", 1.0f);
+  flowCompFactor = preferences.getFloat("flowcomp", DEFAULT_FLOW_COMP);
   preset1 = preferences.getFloat("preset1", 20.0f);
   preset2 = preferences.getFloat("preset2", 40.0f);
   pMode = PreinfusionMode(preferences.getInt("pmode", 0));
@@ -50,6 +50,8 @@ void BrewManager::loadSettings() {
 
 void BrewManager::clearShotData() {
   preferences.begin("brewsettings", false); // read-write
+
+  flowCompFactor = DEFAULT_FLOW_COMP;
   preferences.putFloat("flowcomp", flowCompFactor);
 
   for (int i = 0; i < MAX_STORED_SHOTS; i++) {
@@ -57,6 +59,8 @@ void BrewManager::clearShotData() {
     preferences.putFloat((key + "t").c_str(), 0);
     preferences.putFloat((key + "f").c_str(), 0);
     preferences.putFloat((key + "r").c_str(), 0);
+
+    recentShots[i] = {0, 0, 0};
   }
 
   currentShotIndex = 0;
@@ -122,7 +126,10 @@ void BrewManager::finalizeBrew() {
   for (int i = 0; i < MAX_STORED_SHOTS; i++) {
     if (recentShots[i].targetWeight > 0) {
       float error = recentShots[i].finalWeight - recentShots[i].targetWeight;
-      float weight = 1.0 / (MAX_STORED_SHOTS - i);
+      // Calculate relative distance considering wrap-around
+      int distance =
+          (currentShotIndex - i + MAX_STORED_SHOTS) % MAX_STORED_SHOTS;
+      float weight = 1.0 / (distance + 1); // Add 1 to avoid division by zero
       totalError += error * weight;
       totalWeight += weight;
     }

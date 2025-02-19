@@ -27,7 +27,11 @@ private:
   BrewManager *bManager;
 
   ulong lastWebSocketUpdate = 0;
+  ulong lastWiFiCheck = 0;
   static constexpr ushort WEBSOCKET_INTERVAL = 100;
+  static constexpr ulong WIFI_CHECK_INTERVAL = 60 * 1000;
+
+  void checkWiFiConnection();
 
   void broadcastBrewMetrics();
   String serializeBrewMetrics(const BrewMetrics &metrics);
