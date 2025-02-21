@@ -71,7 +71,7 @@ private:
 
   float targetWeight;
   float currentWeight;
-  float finalFlowRate;
+  float lastFlowRate;
   float stopWeight;
 
   BrewState state = IDLE;
@@ -100,7 +100,7 @@ private:
 
   static constexpr float LEARNING_RATE = 0.2;
   static constexpr float MIN_FLOW_COMP = 0.5;
-  static constexpr float MAX_FLOW_COMP = 5.0;
+  static constexpr float MAX_FLOW_COMP = 2.5;
   static constexpr unsigned long DRIP_SETTLE_TIME = 10 * 1000;
 
   float preset1;

@@ -24,6 +24,15 @@ void WebAPI::setupWebSocket() {
                     AwsEventType type, void *arg, uint8_t *data, size_t len) {
     switch (type) {
     case WS_EVT_CONNECT:
+      if (ws.count() > MAX_WS_CLIENTS) {
+        for (AsyncWebSocketClient &c : ws.getClients()) {
+          if (c.id() < client->id()) {
+            DEBUG_PRINTF("Disconnecting older client #%u\n", c.id());
+            c.close();
+            break;
+          }
+        }
+      }
       DEBUG_PRINTF("WebSocket client #%u connected from %s\n", client->id(),
                    client->remoteIP().toString().c_str());
       break;

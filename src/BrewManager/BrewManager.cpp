@@ -136,7 +136,10 @@ void BrewManager::finalizeBrew() {
   }
 
   // Add newest shot at index 0
-  recentShots[0] = {targetWeight, currentWeight, finalFlowRate, stopWeight};
+  recentShots[0] = {.targetWeight = targetWeight,
+                    .finalWeight = currentWeight,
+                    .lastFlowRate = lastFlowRate,
+                    .stopWeight = stopWeight};
 
   computeCompFactor();
 
@@ -318,7 +321,7 @@ void BrewManager::update() {
     if (state != DRIPPING &&
         currentWeight + (currentFlowRate * flowCompFactor) >= targetWeight) {
       brewEndTime = currentBrewTime;
-      finalFlowRate = currentFlowRate;
+      lastFlowRate = currentFlowRate;
       stopWeight = currentWeight;
 
       setState(DRIPPING);
