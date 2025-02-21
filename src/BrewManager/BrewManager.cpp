@@ -53,7 +53,7 @@ void BrewManager::clearShotData() {
     recentShots[i] = {0, 0, 0};
   }
 
-  saveSettings()
+  saveSettings();
 }
 
 void BrewManager::clearSingleShotData(int index) {
