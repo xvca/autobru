@@ -23,6 +23,7 @@ void BrewManager::saveSettings() {
     preferences.putFloat((key + "t").c_str(), recentShots[i].targetWeight);
     preferences.putFloat((key + "f").c_str(), recentShots[i].finalWeight);
     preferences.putFloat((key + "r").c_str(), recentShots[i].lastFlowRate);
+    preferences.putFloat((key + "s").c_str(), recentShots[i].stopWeight);
   }
 
   preferences.end();
@@ -41,6 +42,7 @@ void BrewManager::loadSettings() {
     recentShots[i].targetWeight = preferences.getFloat((key + "t").c_str(), 0);
     recentShots[i].finalWeight = preferences.getFloat((key + "f").c_str(), 0);
     recentShots[i].lastFlowRate = preferences.getFloat((key + "r").c_str(), 0);
+    recentShots[i].lastFlowRate = preferences.getFloat((key + "s").c_str(), 0);
   }
 
   preferences.end();
@@ -50,7 +52,7 @@ void BrewManager::clearShotData() {
   flowCompFactor = DEFAULT_FLOW_COMP;
 
   for (int i = 0; i < MAX_STORED_SHOTS; i++) {
-    recentShots[i] = {0, 0, 0};
+    recentShots[i] = {0, 0, 0, 0};
   }
 
   saveSettings();
@@ -64,7 +66,7 @@ void BrewManager::clearSingleShotData(int index) {
     recentShots[i] = recentShots[i + 1];
   }
 
-  recentShots[MAX_STORED_SHOTS - 1] = {0, 0, 0};
+  recentShots[MAX_STORED_SHOTS - 1] = {0, 0, 0, 0};
 
   computeCompFactor();
   saveSettings();
@@ -134,7 +136,7 @@ void BrewManager::finalizeBrew() {
   }
 
   // Add newest shot at index 0
-  recentShots[0] = {targetWeight, currentWeight, finalFlowRate};
+  recentShots[0] = {targetWeight, currentWeight, finalFlowRate, stopWeight};
 
   computeCompFactor();
 
