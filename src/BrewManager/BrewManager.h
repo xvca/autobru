@@ -40,6 +40,7 @@ struct Shot {
   float targetWeight;
   float finalWeight;
   float lastFlowRate;
+  float stopWeight;
 };
 
 class BrewManager {
@@ -71,6 +72,7 @@ private:
   float targetWeight;
   float currentWeight;
   float finalFlowRate;
+  float stopWeight;
 
   BrewState state = IDLE;
   PreinfusionMode pMode;
@@ -105,7 +107,8 @@ private:
   float preset2;
 
   Shot recentShots[MAX_STORED_SHOTS];
-  int currentShotIndex = 0;
+
+  void computeCompFactor();
 
   void loadSettings();
   void saveSettings();
@@ -130,8 +133,12 @@ public:
   void update();
 
   BrewState getState() const { return state; }
+  float getTargetWeight() const { return targetWeight; }
 
   void clearShotData();
+  void clearSingleShotData(int index);
+
+  void recalculateCompFactor();
 
   void wake();
 

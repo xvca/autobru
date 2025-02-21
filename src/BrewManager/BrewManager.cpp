@@ -24,7 +24,6 @@ void BrewManager::saveSettings() {
     preferences.putFloat((key + "f").c_str(), recentShots[i].finalWeight);
     preferences.putFloat((key + "r").c_str(), recentShots[i].lastFlowRate);
   }
-  preferences.putInt("shotindex", currentShotIndex);
 
   preferences.end();
 }
@@ -43,29 +42,32 @@ void BrewManager::loadSettings() {
     recentShots[i].finalWeight = preferences.getFloat((key + "f").c_str(), 0);
     recentShots[i].lastFlowRate = preferences.getFloat((key + "r").c_str(), 0);
   }
-  currentShotIndex = preferences.getInt("shotindex", 0);
 
   preferences.end();
 }
 
 void BrewManager::clearShotData() {
-  preferences.begin("brewsettings", false); // read-write
-
   flowCompFactor = DEFAULT_FLOW_COMP;
-  preferences.putFloat("flowcomp", flowCompFactor);
 
   for (int i = 0; i < MAX_STORED_SHOTS; i++) {
-    String key = "shot" + String(i);
-    preferences.putFloat((key + "t").c_str(), 0);
-    preferences.putFloat((key + "f").c_str(), 0);
-    preferences.putFloat((key + "r").c_str(), 0);
-
     recentShots[i] = {0, 0, 0};
   }
 
-  currentShotIndex = 0;
-  preferences.putInt("shotindex", currentShotIndex);
-  preferences.end();
+  saveSettings()
+}
+
+void BrewManager::clearSingleShotData(int index) {
+  if (index < 0 || index >= MAX_STORED_SHOTS)
+    return;
+
+  for (int i = index; i < MAX_STORED_SHOTS - 1; i++) {
+    recentShots[i] = recentShots[i + 1];
+  }
+
+  recentShots[MAX_STORED_SHOTS - 1] = {0, 0, 0};
+
+  computeCompFactor();
+  saveSettings();
 }
 
 void BrewManager::triggerBrewSwitch(int duration = 100) {
@@ -116,37 +118,68 @@ bool BrewManager::stopBrew() {
 }
 
 void BrewManager::finalizeBrew() {
-  recentShots[currentShotIndex] = {targetWeight, currentWeight, finalFlowRate};
+  /*
+   * in these cases we assume the user has accidentally raised the cup before
+   * end of brew or accidentally touched the scale and thus we can exclude it
+   * from flow comp calculation and shot history
+   */
+  if (currentWeight < 0.5 * targetWeight || currentWeight > 2 * targetWeight)
+    return;
 
-  currentShotIndex = (currentShotIndex + 1) % MAX_STORED_SHOTS;
-
-  float totalError = 0;
-  float totalWeight = 0;
-
-  for (int i = 0; i < MAX_STORED_SHOTS; i++) {
-    if (recentShots[i].targetWeight > 0) {
-      float error = recentShots[i].finalWeight - recentShots[i].targetWeight;
-      // Calculate relative distance considering wrap-around
-      int distance =
-          (currentShotIndex - i + MAX_STORED_SHOTS) % MAX_STORED_SHOTS;
-      float weight = 1.0 / (distance + 1); // Add 1 to avoid division by zero
-      totalError += error * weight;
-      totalWeight += weight;
+  // shift the recent shot array and discard least recent
+  for (int i = MAX_STORED_SHOTS - 1; i > 0; i--) {
+    if (recentShots[i].targetWeight != 0) {
+      recentShots[i] = recentShots[i - 1];
     }
   }
 
-  if (totalWeight > 0) {
-    float avgError = totalError / totalWeight;
-    float adjustment = (avgError / finalFlowRate) * LEARNING_RATE;
-    flowCompFactor =
-        constrain(flowCompFactor + adjustment, MIN_FLOW_COMP, MAX_FLOW_COMP);
+  // Add newest shot at index 0
+  recentShots[0] = {targetWeight, currentWeight, finalFlowRate};
 
-    saveSettings();
-  }
+  computeCompFactor();
+
+  saveSettings();
+
   for (int i = 3; i--;) {
     sManager->beep();
     delay(150);
   }
+}
+
+void BrewManager::computeCompFactor() {
+  float totalPredictionTime = 0;
+  float totalWeight = 0;
+  int validShots = 0;
+
+  for (int i = 0; i < MAX_STORED_SHOTS; i++) {
+    if (recentShots[i].targetWeight > 0) {
+      // How much coffee continued to flow after we stopped the shot
+      float drippage = recentShots[i].finalWeight - recentShots[i].stopWeight;
+
+      // How many seconds early do we need to stop at this given flow rate
+      float predictionSeconds = drippage / recentShots[i].lastFlowRate;
+
+      float weight = 1.0 / (i + 1); // More recent shots weighted higher
+
+      totalPredictionTime += predictionSeconds * weight;
+      totalWeight += weight;
+      validShots++;
+    }
+  }
+
+  if (validShots > 0) {
+    // Number of seconds to stop before target time to account for drippage
+    float avgPredictionTime = totalPredictionTime / totalWeight;
+    flowCompFactor = constrain(avgPredictionTime, MIN_FLOW_COMP, MAX_FLOW_COMP);
+  } else {
+    flowCompFactor = DEFAULT_FLOW_COMP;
+  }
+}
+
+void BrewManager::recalculateCompFactor() {
+  computeCompFactor();
+
+  saveSettings();
 }
 
 void BrewManager::handleSimplePreinfusion() {
@@ -193,11 +226,13 @@ void BrewManager::update() {
        isPressed(TWO_CUP_PIN))) {
 
     if (!active) {
-      // wait for button press to finish.
-      // we do this because one of the main reasons to press the button prior to
-      // brewing is probably to flush the grouphead, as such, the one or two cup
-      // buttons might be held down for a longer duration of time. this way the
-      // user can flush the group and wake the ESP at the same time.
+      /*
+       * wait for button press to finish.
+       * we do this because one of the main reasons to press the button prior
+       * to brewing is to flush the grouphead, as such, the one or
+       * two cup buttons might be held down for a longer duration of time.
+       * this way the user can flush the group and wake the ESP at the same time
+       */
       while (isPressed(MANUAL_PIN) || isPressed(ONE_CUP_PIN) ||
              isPressed(TWO_CUP_PIN)) {
         delay(100);
@@ -282,6 +317,7 @@ void BrewManager::update() {
         currentWeight + (currentFlowRate * flowCompFactor) >= targetWeight) {
       brewEndTime = currentBrewTime;
       finalFlowRate = currentFlowRate;
+      stopWeight = currentWeight;
 
       setState(DRIPPING);
       triggerBrewSwitch();

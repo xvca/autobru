@@ -9,6 +9,7 @@ struct BrewMetrics {
   float flowRate;
   ulong time;
   BrewState state;
+  float targetWeight;
 };
 
 class WebAPI {

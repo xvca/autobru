@@ -24,10 +24,15 @@ void WebAPI::setupWebSocket() {
                     AwsEventType type, void *arg, uint8_t *data, size_t len) {
     switch (type) {
     case WS_EVT_CONNECT:
+      DEBUG_PRINTF("WebSocket client #%u connected from %s\n", client->id(),
+                   client->remoteIP().toString().c_str());
       break;
     case WS_EVT_DISCONNECT:
+      DEBUG_PRINTF("WebSocket client #%u disconnected\n", client->id());
       break;
     case WS_EVT_ERROR:
+      DEBUG_PRINTF("WebSocket client #%u error(%u): %s\n", client->id(),
+                   *((uint16_t *)arg), (char *)data);
       break;
     }
   });
@@ -137,6 +142,73 @@ void WebAPI::setupRoutes() {
 
         AsyncWebServerResponse *response = request->beginResponse(
             200, "application/json", "{\"message\": \"Shot data cleared\"}");
+        response->addHeader("Access-Control-Allow-Origin", "*");
+        request->send(response);
+
+        return true;
+      });
+
+  server.on(
+      "/clear-shot", HTTP_POST,
+      [this, &handleError](AsyncWebServerRequest *request) {
+        if (!bManager) {
+          handleError(request, 400, "Brew manager not initialized");
+          return false;
+        }
+
+        if (!bManager->isEnabled()) {
+          handleError(
+              request, 400,
+              "Brew control is currently disabled. Please enable in settings");
+          return false;
+        }
+
+        if (!request->hasParam("index", true)) {
+          handleError(request, 400, "Missing target weight parameter");
+          return false;
+        }
+
+        int index = request->getParam("index", true)->value().toInt();
+        if (index < 0 || index > MAX_STORED_SHOTS) {
+          handleError(request, 400,
+                      "Invalid shot index (must be between 0-" +
+                          MAX_STORED_SHOTS);
+          return false;
+        }
+
+        bManager->clearSingleShotData(index);
+
+        AsyncWebServerResponse *response = request->beginResponse(
+            200, "application/json",
+            "{\"message\": \"Deleted shot\", \"index\": " + String(index) +
+                "}");
+        response->addHeader("Access-Control-Allow-Origin", "*");
+        request->send(response);
+
+        return true;
+      });
+
+  server.on(
+      "/recalc-comp-factor", HTTP_POST,
+      [this, &handleError](AsyncWebServerRequest *request) {
+        if (!bManager) {
+          handleError(request, 400, "Brew manager not initialized");
+          return false;
+        }
+
+        if (!bManager->isEnabled()) {
+          handleError(
+              request, 400,
+              "Brew control is currently disabled. Please enable in settings");
+          return false;
+        }
+
+        bManager->recalculateCompFactor();
+
+        AsyncWebServerResponse *response = request->beginResponse(
+            200, "application/json",
+            "{\"message\": \"new flow comp factor\", \"\": " +
+                String(bManager->getFlowCompFactor()) + "}");
         response->addHeader("Access-Control-Allow-Origin", "*");
         request->send(response);
 
@@ -301,10 +373,13 @@ void WebAPI::broadcastBrewMetrics() {
     return;
   }
 
-  BrewMetrics metrics{.weight = sManager->getWeight(),
-                      .flowRate = sManager->getFlowRate(),
-                      .time = sManager->getTime(),
-                      .state = bManager->getState()};
+  BrewMetrics metrics{
+      .weight = sManager->getWeight(),
+      .flowRate = sManager->getFlowRate(),
+      .time = sManager->getTime(),
+      .state = bManager->getState(),
+      .targetWeight = bManager->getTargetWeight(),
+  };
 
   ws.textAll(serializeBrewMetrics(metrics));
 }
@@ -313,5 +388,6 @@ String WebAPI::serializeBrewMetrics(const BrewMetrics &metrics) {
   return String("{") + "\"weight\":" + String(metrics.weight, 1) + "," +
          "\"flowRate\":" + String(metrics.flowRate, 1) + "," +
          "\"time\":" + String(metrics.time) + "," +
+         "\"target\":" + String(metrics.targetWeight) + "," +
          "\"state\":" + String(metrics.state) + "}";
 }
