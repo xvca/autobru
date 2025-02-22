@@ -130,7 +130,7 @@ void BrewManager::finalizeBrew() {
 
   // shift the recent shot array and discard least recent
   for (int i = MAX_STORED_SHOTS - 1; i > 0; i--) {
-    if (recentShots[i].targetWeight != 0) {
+    if (recentShots[i - 1].targetWeight != 0) {
       recentShots[i] = recentShots[i - 1];
     }
   }

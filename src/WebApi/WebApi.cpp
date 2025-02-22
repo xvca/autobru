@@ -1,6 +1,7 @@
 // WebApi.cpp
 #include "WebApi.h"
 #include "credentials.h"
+#include <cstdint>
 
 WebAPI *WebAPI::instance = nullptr;
 
@@ -25,13 +26,7 @@ void WebAPI::setupWebSocket() {
     switch (type) {
     case WS_EVT_CONNECT:
       if (ws.count() > MAX_WS_CLIENTS) {
-        for (AsyncWebSocketClient &c : ws.getClients()) {
-          if (c.id() < client->id()) {
-            DEBUG_PRINTF("Disconnecting older client #%u\n", c.id());
-            c.close();
-            break;
-          }
-        }
+        ws.cleanupClients(MAX_WS_CLIENTS);
       }
       DEBUG_PRINTF("WebSocket client #%u connected from %s\n", client->id(),
                    client->remoteIP().toString().c_str());
@@ -39,6 +34,14 @@ void WebAPI::setupWebSocket() {
     case WS_EVT_DISCONNECT:
       DEBUG_PRINTF("WebSocket client #%u disconnected\n", client->id());
       break;
+    case WS_EVT_DATA:
+      if (len == 4 && strncmp((char *)data, "ping", 4) == 0) {
+        DEBUG_PRINTF("Ping received from client #%u\n", client->id());
+        client->text("pong");
+        DEBUG_PRINTF("Pong sent to client #%u\n", client->id());
+      }
+      break;
+
     case WS_EVT_ERROR:
       DEBUG_PRINTF("WebSocket client #%u error(%u): %s\n", client->id(),
                    *((uint16_t *)arg), (char *)data);
@@ -382,21 +385,15 @@ void WebAPI::broadcastBrewMetrics() {
     return;
   }
 
-  BrewMetrics metrics{
-      .weight = sManager->getWeight(),
-      .flowRate = sManager->getFlowRate(),
-      .time = sManager->getTime(),
-      .state = bManager->getState(),
-      .targetWeight = bManager->getTargetWeight(),
-  };
+  BrewMetrics metrics = {.weight = sManager->getWeight(),
+                         .flowRate = sManager->getFlowRate(),
+                         .targetWeight = bManager->getTargetWeight(),
+                         .time = sManager->getTime(),
+                         .state = bManager->getState()};
 
-  ws.textAll(serializeBrewMetrics(metrics));
-}
-
-String WebAPI::serializeBrewMetrics(const BrewMetrics &metrics) {
-  return String("{") + "\"weight\":" + String(metrics.weight, 1) + "," +
-         "\"flowRate\":" + String(metrics.flowRate, 1) + "," +
-         "\"time\":" + String(metrics.time) + "," +
-         "\"target\":" + String(metrics.targetWeight) + "," +
-         "\"state\":" + String(metrics.state) + "}";
+  for (AsyncWebSocketClient &c : ws.getClients()) {
+    if (c.canSend()) {
+      c.binary((uint8_t *)&metrics, sizeof(BrewMetrics));
+    }
+  }
 }

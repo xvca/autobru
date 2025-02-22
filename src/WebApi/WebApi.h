@@ -4,13 +4,16 @@
 #include <ESPAsyncHTTPUpdateServer.h>
 #include <ESPAsyncWebServer.h>
 
+#define WS_MAX_QUEUED_MESSAGES 8
+#define DEFAULT_MAX_WS_CLIENTS 1
+
 struct BrewMetrics {
   float weight;
   float flowRate;
+  float targetWeight;
   ulong time;
   BrewState state;
-  float targetWeight;
-};
+} __attribute__((packed));
 
 class WebAPI {
 private:
@@ -31,13 +34,12 @@ private:
   ulong lastWiFiCheck = 0;
 
   static constexpr ushort MAX_WS_CLIENTS = 1;
-  static constexpr ushort WEBSOCKET_INTERVAL = 250;
+  static constexpr ushort WEBSOCKET_INTERVAL = 125;
   static constexpr ulong WIFI_CHECK_INTERVAL = 60 * 1000;
 
   void checkWiFiConnection();
 
   void broadcastBrewMetrics();
-  String serializeBrewMetrics(const BrewMetrics &metrics);
 
   void setupWiFi();
   void setupRoutes();
