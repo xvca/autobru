@@ -42,7 +42,7 @@ void BrewManager::loadSettings() {
     recentShots[i].targetWeight = preferences.getFloat((key + "t").c_str(), 0);
     recentShots[i].finalWeight = preferences.getFloat((key + "f").c_str(), 0);
     recentShots[i].lastFlowRate = preferences.getFloat((key + "r").c_str(), 0);
-    recentShots[i].lastFlowRate = preferences.getFloat((key + "s").c_str(), 0);
+    recentShots[i].stopWeight = preferences.getFloat((key + "s").c_str(), 0);
   }
 
   preferences.end();
