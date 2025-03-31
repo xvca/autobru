@@ -11,6 +11,7 @@ void WebAPI::setupWiFi() {
   WiFi.mode(WIFI_STA);
   WiFi.setHostname("autobru");
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  WiFi.setSleep(false);
 
   while (WiFi.waitForConnectResult() != WL_CONNECTED) {
     delay(5000);
@@ -392,7 +393,7 @@ void WebAPI::broadcastBrewMetrics() {
                          .state = bManager->getState()};
 
   for (AsyncWebSocketClient &c : ws.getClients()) {
-    if (c.canSend()) {
+    if (c.canSend() && c.queueLen() < 5) {
       c.binary((uint8_t *)&metrics, sizeof(BrewMetrics));
     }
   }

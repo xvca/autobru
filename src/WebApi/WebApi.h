@@ -4,7 +4,6 @@
 #include <ESPAsyncHTTPUpdateServer.h>
 #include <ESPAsyncWebServer.h>
 
-#define WS_MAX_QUEUED_MESSAGES 8
 #define DEFAULT_MAX_WS_CLIENTS 1
 
 struct BrewMetrics {

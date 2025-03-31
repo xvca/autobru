@@ -109,6 +109,7 @@ private:
   Shot recentShots[MAX_STORED_SHOTS];
 
   void computeCompFactor();
+  void computeCompFactorFromScratch();
 
   void loadSettings();
   void saveSettings();

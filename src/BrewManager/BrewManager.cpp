@@ -68,8 +68,55 @@ void BrewManager::clearSingleShotData(int index) {
 
   recentShots[MAX_STORED_SHOTS - 1] = {0, 0, 0, 0};
 
-  computeCompFactor();
+  computeCompFactorFromScratch();
   saveSettings();
+}
+
+void BrewManager::computeCompFactorFromScratch() {
+  int shotCount = 0;
+  for (int i = 0; i < MAX_STORED_SHOTS; i++) {
+    if (recentShots[i].targetWeight > 0) {
+      shotCount++;
+    }
+  }
+
+  if (shotCount == 0) {
+    flowCompFactor = DEFAULT_FLOW_COMP;
+    return;
+  }
+
+  float totalWeightedTime = 0;
+  float totalWeight = 0;
+
+  for (int i = 0; i < MAX_STORED_SHOTS; i++) {
+    if (recentShots[i].targetWeight <= 0)
+      continue;
+
+    float drippage = recentShots[i].finalWeight - recentShots[i].stopWeight;
+    float flowRate = recentShots[i].lastFlowRate;
+
+    if (flowRate < 0.05 || drippage < 0) {
+      continue;
+    }
+
+    float predictionTime = drippage / flowRate;
+
+    float weight = 1.0f / sqrt(i + 1);
+
+    totalWeightedTime += predictionTime * weight;
+    totalWeight += weight;
+  }
+
+  if (totalWeight > 0) {
+    // Direct assignment without blending, since we're recalculating from
+    // scratch
+    flowCompFactor = totalWeightedTime / totalWeight;
+
+    // Ensure constraints are respected
+    flowCompFactor = constrain(flowCompFactor, MIN_FLOW_COMP, MAX_FLOW_COMP);
+  } else {
+    flowCompFactor = DEFAULT_FLOW_COMP;
+  }
 }
 
 void BrewManager::triggerBrewSwitch(int duration = 100) {
@@ -167,64 +214,39 @@ void BrewManager::computeCompFactor() {
     return;
   }
 
-  float totalPredictionTime = 0;
+  float totalWeightedTime = 0;
   float totalWeight = 0;
-  int validShots = 0;
-
-  float meanFlowRate = 0;
-  float meanDrippage = 0;
 
   for (int i = 0; i < MAX_STORED_SHOTS; i++) {
-    if (recentShots[i].targetWeight > 0) {
-      meanFlowRate += recentShots[i].lastFlowRate;
-      meanDrippage += recentShots[i].finalWeight - recentShots[i].stopWeight;
-    }
+    if (recentShots[i].targetWeight <= 0)
+      continue;
+
+    float drippage = recentShots[i].finalWeight - recentShots[i].stopWeight;
+    float flowRate = recentShots[i].lastFlowRate;
+
+    if (flowRate < 0.05 || drippage < 0)
+      continue;
+
+    float predictionTime = drippage / flowRate;
+
+    float weight = 1.0f / sqrt(i + 1);
+
+    totalWeightedTime += predictionTime * weight;
+    totalWeight += weight;
   }
 
-  meanFlowRate /= shotCount;
-  meanDrippage /= shotCount;
+  if (totalWeight > 0) {
+    float newCompFactor = totalWeightedTime / totalWeight;
 
-  for (int i = 0; i < MAX_STORED_SHOTS; i++) {
-    if (recentShots[i].targetWeight > 0) {
-      float drippage = recentShots[i].finalWeight - recentShots[i].stopWeight;
-      float flowRate = recentShots[i].lastFlowRate;
+    flowCompFactor =
+        (1.0f - LEARNING_RATE) * flowCompFactor + LEARNING_RATE * newCompFactor;
 
-      float predictionSeconds = drippage / flowRate;
-      float meanPredictionSeconds = meanDrippage / meanFlowRate;
-      float blendedPrediction = (predictionSeconds + meanPredictionSeconds) / 2;
-
-      float accuracy =
-          1.0 - abs(recentShots[i].finalWeight - recentShots[i].targetWeight) /
-                    recentShots[i].targetWeight;
-
-      // Weight distribution:
-      // - 20% based on recency
-      // - 40% based on consistency with mean values
-      // - 40% based on shot accuracy
-      float recencyWeight = 0.2 / (i + 1);
-      float consistencyWeight =
-          0.4 * (1.0 - abs(flowRate - meanFlowRate) / meanFlowRate);
-      float accuracyWeight = 0.4 * accuracy;
-
-      float weight = recencyWeight + consistencyWeight + accuracyWeight;
-
-      totalPredictionTime += blendedPrediction * weight;
-      totalWeight += weight;
-      validShots++;
-    }
-  }
-
-  if (validShots > 0) {
-    float avgPredictionTime = totalPredictionTime / totalWeight;
-    flowCompFactor = constrain(avgPredictionTime, MIN_FLOW_COMP, MAX_FLOW_COMP);
-  } else {
-    flowCompFactor = DEFAULT_FLOW_COMP;
+    flowCompFactor = constrain(flowCompFactor, MIN_FLOW_COMP, MAX_FLOW_COMP);
   }
 }
 
 void BrewManager::recalculateCompFactor() {
-  computeCompFactor();
-
+  computeCompFactorFromScratch();
   saveSettings();
 }
 
