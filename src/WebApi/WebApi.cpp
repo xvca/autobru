@@ -11,7 +11,6 @@ void WebAPI::setupWiFi() {
   WiFi.mode(WIFI_STA);
   WiFi.setHostname("autobru");
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  WiFi.setSleep(false);
 
   while (WiFi.waitForConnectResult() != WL_CONNECTED) {
     delay(5000);
