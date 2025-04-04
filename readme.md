@@ -5,7 +5,7 @@ An ESP32-based automatic coffee brewing control system that interfaces with Blue
 ## Features
 
 - Connects to BOOKOO Bluetooth scales
-- Reads real-time weight and flow rate data 
+- Reads real-time weight and flow rate data
 - Automated shot control based on target weight with dynamic learning
 - WebSocket-based real-time weight updates
 - Asynchronous web server for control and monitoring
@@ -13,10 +13,13 @@ An ESP32-based automatic coffee brewing control system that interfaces with Blue
 - Integration with [Bru](https://github.com/xvca/bru) PWA for coffee brewing/bean tracking
 - Weight triggered Preinfusion mode that uses low pressure until the first drops of coffee are detected (as an alternative to preinfusing for a pre-defined duration)
 - OTA Updates using ESPAsyncHTTPUpdateServer
+- Adaptive flow compensation that learns from previous shots
+- Shot history storage for reference and flow compensation calculation
+- Automatic sleep/wake to save energy and prolong scale battery life
 
 ## Hardware Requirements
 
-- ESP32 development board 
+- ESP32 development board
 - Breville Dual Boiler espresso machine
 - BOOKOO Bluetooth coffee scale
 - Basic wiring for brew switch control
@@ -73,29 +76,32 @@ The ESP32 hosts a web interface accessible via its IP address, offering:
 - `/start` - POST to start a brew with target weight
 - `/stop` - POST to stop current brew
 - `/clear-data` - POST to clear stored shot data
+- `/clear-shot` - POST to clear a specific shot record
+- `/recalc-comp-factor` - POST to force recalculation of the flow compensation factor
 - `/wake` - POST to wake ESP from sleep mode
+- `/data` - GET shot history and flow compensation factor
 
-The system includes a learning algorithm that tracks shot history and automatically adjusts timing to ensure the final brew weight matches the target weight. This compensation factor is stored and refined over time based on actual results.
+## WebSocket
+
+- `/ws` - WebSocket endpoint for real-time brew metrics (weight, flow rate, target weight, time, brew state)
+
+## Power Management
+
+The system implements an automatic activity management system that:
+- Puts the device to sleep after 10 minutes of inactivity
+- Disconnects from the scale to save battery life
+- Wakes on any button press or via wake API endpoint
+
+## Flow Compensation Learning System
+
+The system includes a learning algorithm that tracks shot history and automatically adjusts timing to ensure the final brew weight matches the target weight. This compensation factor:
+- Is calculated based on weighted average of past shots
+- Gives priority to more recent shots
+- Adapts gradually with each brew
+- Can be manually recalculated
+- Is stored in persistent memory
 
 ## Status
 
 This is currently a work in progress. Future updates will include:
-- Integration with bru PWA
-- Configurable target weights
-- Remote control capabilities
-- Web interface features
-
-## License
-
-VIRAL PUBLIC LICENSE
-Copyleft (ɔ) All Rights Reversed
-
-This WORK is hereby relinquished of all associated ownership, attribution and copy
-rights, and redistribution or use of any kind, with or without modification, is
-permitted without restriction subject to the following conditions:
-
-1.	Redistributions of this WORK, or ANY work that makes use of ANY of the
-	contents of this WORK by ANY kind of copying, dependency, linkage, or ANY
-	other possible form of DERIVATION or COMBINATION, must retain the ENTIRETY
-	of this license.
-2.	No further restrictions of ANY kind may be applied.
+- Further integration with bru PWA
