@@ -26,6 +26,11 @@ An ESP32-based automatic coffee brewing control system that interfaces with Blue
 
 ## Hardware Details
 
+
+<img src="https://github.com/user-attachments/assets/6b753872-b7ba-4e36-aa85-fffcd82899c3" alt="pcb" width="250"/>
+<img src="https://github.com/user-attachments/assets/7e20d250-a7f0-4608-a933-aaea8918ad65" alt="pcb in machine" width="270"/>
+
+
 The custom PCB includes:
 
 - 2x JST S11B-PH-K-S connectors
