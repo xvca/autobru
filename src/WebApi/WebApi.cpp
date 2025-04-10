@@ -89,7 +89,7 @@ void WebAPI::setupRoutes() {
           return false;
         }
 
-        if (!bManager->startBrew(targetWeight)) {
+        if (!bManager->startBrew(targetWeight, true)) {
           if (bManager->isBrewing()) {
             handleError(request, 409, "A brew is already running");
             return false;

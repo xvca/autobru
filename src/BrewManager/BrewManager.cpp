@@ -119,50 +119,57 @@ void BrewManager::computeCompFactorFromScratch() {
   }
 }
 
-void BrewManager::triggerBrewSwitch(int duration = 100) {
-  digitalWrite(BREW_SWITCH_PIN, HIGH);
-  delay(duration);
-  digitalWrite(BREW_SWITCH_PIN, LOW);
+void BrewManager::setBrewSwitch(bool newState) {
+  if (brewSwitchState != newState) {
+    brewSwitchState = newState;
+    digitalWrite(BREW_SWITCH_PIN, newState ? HIGH : LOW);
+  }
 }
 
-bool BrewManager::isPressed(uint8_t button) { return !digitalRead(button); }
+void BrewManager::triggerBrewSwitch(int duration = 100) {
+  setBrewSwitch(true);
+  delay(duration);
+  setBrewSwitch(false);
+}
 
-bool BrewManager::startBrew(float target, bool shouldTriggerBrew) {
-  if (!enabled)
-    return false;
+bool BrewManager::isPressed(uint8_t button) {
+  static constexpr int NUM_SAMPLES = 10;
+  static constexpr int SAMPLE_DELAY = 2;
 
-  if (!sManager->isConnected())
-    return false;
+  int pressedCount = 0;
 
-  if (!isBrewing()) {
-    targetWeight = target;
-    brewStartTime = millis();
-
-    sManager->startAndTare();
-
-    setState(PREINFUSION);
-
-    if (!shouldTriggerBrew) {
-      return true;
+  for (int i = 0; i < NUM_SAMPLES; i++) {
+    if (!digitalRead(button)) {
+      pressedCount++;
     }
-
-    if (pMode == SIMPLE) {
-      handleSimplePreinfusion();
-    } else if (pMode == WEIGHT_TRIGGERED) {
-      handleWeightTriggeredPreinfusion();
-    }
-
-    return true;
+    delay(SAMPLE_DELAY);
   }
 
-  return false;
+  return pressedCount > (NUM_SAMPLES / 2);
+}
+
+bool BrewManager::startBrew(float target, bool shouldTriggerBrew) {
+  if (!enabled || !sManager->isConnected() || isBrewing())
+    return false;
+
+  targetWeight = target;
+  brewStartTime = millis();
+  sManager->startAndTare();
+
+  if (shouldTriggerBrew) {
+    setState(pMode == SIMPLE ? BREWING : PREINFUSION);
+  } else {
+    state = pMode == SIMPLE ? BREWING : PREINFUSION;
+    if (pMode == WEIGHT_TRIGGERED)
+      setBrewSwitch(true);
+  }
+
+  return true;
 }
 
 bool BrewManager::stopBrew() {
-  triggerBrewSwitch();
-  state = IDLE;
+  setState(IDLE);
   sManager->stopTimer();
-
   return true;
 }
 
@@ -248,16 +255,6 @@ void BrewManager::computeCompFactor() {
 void BrewManager::recalculateCompFactor() {
   computeCompFactorFromScratch();
   saveSettings();
-}
-
-void BrewManager::handleSimplePreinfusion() {
-  triggerBrewSwitch();
-
-  state = BREWING;
-}
-
-void BrewManager::handleWeightTriggeredPreinfusion() {
-  digitalWrite(BREW_SWITCH_PIN, HIGH);
 }
 
 unsigned long BrewManager::getBrewTime() {
@@ -347,14 +344,14 @@ void BrewManager::update() {
     return;
   }
 
-  if (isBrewing() && currentBrewTime >= DEBOUNCE_DELAY) {
+  if (isBrewing() && currentBrewTime >= BUTTON_DEBOUNCE_TIME) {
     lastActiveTime = millis();
 
     // brew has been cancelled
     if (isPressed(MANUAL_PIN) || isPressed(ONE_CUP_PIN) ||
         isPressed(TWO_CUP_PIN)) {
-      delay(DEBOUNCE_DELAY);
-      setState(IDLE);
+      delay(BUTTON_DEBOUNCE_TIME);
+      state = IDLE;
       return;
     }
 
@@ -377,7 +374,6 @@ void BrewManager::update() {
      */
     if (state == PREINFUSION && pMode == WEIGHT_TRIGGERED &&
         currentWeight >= 2 && currentBrewTime >= 2000) {
-      digitalWrite(BREW_SWITCH_PIN, LOW);
       setState(BREWING);
     }
 
@@ -388,7 +384,6 @@ void BrewManager::update() {
       stopWeight = currentWeight;
 
       setState(DRIPPING);
-      triggerBrewSwitch();
 
       sManager->stopTimer();
     }
@@ -419,4 +414,70 @@ void BrewManager::setPrefs(BrewPrefs prefs) {
 BrewPrefs BrewManager::getPrefs() {
   BrewPrefs prefs = {enabled, preset1, preset2, pMode};
   return prefs;
+}
+
+void BrewManager::setState(BrewState newState) {
+  if (state == newState)
+    return;
+
+  bool validTransition = false;
+
+  switch (state) {
+  case IDLE:
+    if (newState == PREINFUSION) {
+      validTransition = true;
+      if (pMode == WEIGHT_TRIGGERED) {
+        setBrewSwitch(true);
+      }
+    } else if (newState == BREWING) {
+      validTransition = true;
+      if (pMode == SIMPLE) {
+        triggerBrewSwitch();
+      }
+    }
+    break;
+
+  case PREINFUSION:
+    if (newState == BREWING) {
+      validTransition = true;
+
+      setBrewSwitch(false);
+    } else if (newState == IDLE) {
+      validTransition = true;
+
+      setBrewSwitch(false);
+
+      delay(50);
+
+      triggerBrewSwitch();
+    }
+    break;
+
+  case BREWING:
+    if (newState == DRIPPING) {
+      validTransition = true;
+
+      triggerBrewSwitch();
+    } else if (newState == IDLE) {
+      validTransition = true;
+
+      triggerBrewSwitch();
+    }
+    break;
+
+  case DRIPPING:
+    if (newState == IDLE) {
+      validTransition = true;
+    }
+    break;
+  }
+
+  if (!validTransition) {
+    DEBUG_PRINTF("Invalid state transition from %d to %d\n", state, newState);
+    return;
+  }
+
+  DEBUG_PRINTF("State transition: %d -> %d\n", state, newState);
+
+  state = newState;
 }

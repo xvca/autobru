@@ -78,10 +78,11 @@ private:
   PreinfusionMode pMode;
 
   static const unsigned int ACTIVITY_TIMEOUT = 10 * 60 * 1000;
-  static const unsigned int MAX_SHOT_DURATION = 50 * 1000;
+  static const unsigned int MAX_SHOT_DURATION = 60 * 1000;
 
-  static const unsigned long DEBOUNCE_DELAY = 500;
-  unsigned long lastDebounceTime = 0;
+  ulong lastButtonPressTime = 0;
+  bool brewSwitchState = false;
+  static constexpr unsigned long BUTTON_DEBOUNCE_TIME = 250;
 
   unsigned long brewStartTime = 0;
   unsigned long brewEndTime = 0;
@@ -89,12 +90,13 @@ private:
   void handleSimplePreinfusion();
   void handleWeightTriggeredPreinfusion();
 
+  void setBrewSwitch(bool state);
   void triggerBrewSwitch(int duration);
   bool isPressed(uint8_t button);
 
   ScaleManager *sManager;
 
-  void setState(BrewState newState) { state = newState; }
+  void setState(BrewState newState);
 
   Preferences preferences;
 
