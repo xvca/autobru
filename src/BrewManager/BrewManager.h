@@ -7,7 +7,7 @@
 
 class ScaleManager;
 
-static constexpr int MAX_STORED_SHOTS = 10;
+static constexpr int MAX_STORED_SHOTS = 25;
 /**
  * From personal experience using a spouted portafilter, flow comp would reach
  * equilibrium at around 1.3
