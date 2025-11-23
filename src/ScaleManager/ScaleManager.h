@@ -103,7 +103,7 @@ private:
   NimBLEClient *pClient;
   NimBLEScan *pScan;
 
-  const NimBLEAdvertisedDevice *advDevice;
+  NimBLEAdvertisedDevice *advDevice = nullptr;
 
   NimBLERemoteCharacteristic *commandChar;
   NimBLERemoteCharacteristic *weightChar;

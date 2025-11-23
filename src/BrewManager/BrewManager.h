@@ -32,9 +32,11 @@ enum PreinfusionMode { SIMPLE, WEIGHT_TRIGGERED };
 
 struct BrewPrefs {
   bool isEnabled;
-  float preset1;
-  float preset2;
+  float regularPreset;
+  float decafPreset;
   PreinfusionMode pMode;
+  String timezone;
+  int decafStartHour;
 };
 
 struct Shot {
@@ -94,8 +96,11 @@ private:
   static constexpr float PROFILE_THRESHOLD_WEIGHT = 28.0f;
 
   // settings
-  float preset1;
-  float preset2;
+  float regularPreset;
+  float decafPreset;
+
+  String timezone = "GMT0";
+  int decafStartHour = -1;
 
   // seperate history for each profile to prevent learning pollution
   Shot recentShotsProfile0[MAX_STORED_SHOTS];
@@ -110,6 +115,8 @@ private:
   void loadSettings();
   void saveSettings();
   void finalizeBrew();
+
+  bool isDecafTime();
 
   // internal state handlers
   void handleIdleState();
@@ -157,6 +164,8 @@ public:
 
   Shot *getRecentShots(int profileIndex);
   float getFlowCompFactor(int profileIndex);
+
+  void syncTimezone();
 };
 
 #endif

@@ -16,6 +16,7 @@ void BrewManager::saveSettings() {
   // save history for profile 0;
   for (int i = 0; i < MAX_STORED_SHOTS; i++) {
     String key = "p0_" + String(i);
+    preferences.putUInt((key + "i").c_str(), recentShotsProfile0[i].id);
     preferences.putFloat((key + "t").c_str(),
                          recentShotsProfile0[i].targetWeight);
     preferences.putFloat((key + "f").c_str(),
@@ -29,6 +30,7 @@ void BrewManager::saveSettings() {
   // save history for profile 1;
   for (int i = 0; i < MAX_STORED_SHOTS; i++) {
     String key = "p1_" + String(i);
+    preferences.putUInt((key + "i").c_str(), recentShotsProfile1[i].id);
     preferences.putFloat((key + "t").c_str(),
                          recentShotsProfile1[i].targetWeight);
     preferences.putFloat((key + "f").c_str(),
@@ -48,8 +50,10 @@ void BrewManager::loadSettings() {
   preferences.begin("brewsettings", true); // read-only
 
   enabled = preferences.getBool("enabled", true);
-  preset1 = preferences.getFloat("preset1", 20.0f);
-  preset2 = preferences.getFloat("preset2", 40.0f);
+  regularPreset = preferences.getFloat("reg", 40.0f);
+  timezone = preferences.getString("tz", "GMT0");
+  decafPreset = preferences.getFloat("dec", 40.0f);
+  decafStartHour = preferences.getInt("decHr", -1);
   pMode = PreinfusionMode(preferences.getInt("pmode", 0));
 
   flowCompFactors[0] = preferences.getFloat("fact0", DEFAULT_FLOW_COMP);
@@ -58,6 +62,7 @@ void BrewManager::loadSettings() {
   // load profile 0
   for (int i = 0; i < MAX_STORED_SHOTS; i++) {
     String key = "p0_" + String(i);
+    recentShotsProfile0[i].id = preferences.getUInt((key + "i").c_str(), 0);
     recentShotsProfile0[i].targetWeight =
         preferences.getFloat((key + "t").c_str(), 0);
     recentShotsProfile0[i].finalWeight =
@@ -71,6 +76,7 @@ void BrewManager::loadSettings() {
   // load profile 1
   for (int i = 0; i < MAX_STORED_SHOTS; i++) {
     String key = "p1_" + String(i);
+    recentShotsProfile1[i].id = preferences.getUInt((key + "i").c_str(), 0);
     recentShotsProfile1[i].targetWeight =
         preferences.getFloat((key + "t").c_str(), 0);
     recentShotsProfile1[i].finalWeight =
@@ -88,21 +94,27 @@ void BrewManager::loadSettings() {
 
 void BrewManager::setPrefs(BrewPrefs prefs) {
   enabled = prefs.isEnabled;
-  preset1 = prefs.preset1;
-  preset2 = prefs.preset2;
   pMode = prefs.pMode;
+  regularPreset = prefs.regularPreset;
+  decafPreset = prefs.decafPreset;
+  timezone = prefs.timezone;
+  decafStartHour = prefs.decafStartHour;
 
   preferences.begin("brewsettings", false);
+
   preferences.putBool("enabled", enabled);
-  preferences.putFloat("preset1", preset1);
-  preferences.putFloat("preset2", preset2);
+  preferences.putFloat("reg", regularPreset);
+  preferences.putFloat("dec", decafPreset);
+  preferences.putInt("decHr", decafStartHour);
+  preferences.putString("tz", timezone);
   preferences.putInt("pmode", pMode);
 
   preferences.end();
 }
 
 BrewPrefs BrewManager::getPrefs() {
-  BrewPrefs prefs = {enabled, preset1, preset2, pMode};
+  BrewPrefs prefs = {enabled, regularPreset, decafPreset,
+                     pMode,   timezone,      decafStartHour};
   return prefs;
 }
 
@@ -246,9 +258,13 @@ void BrewManager::wake() {
   active = true;
   lastActiveTime = millis();
 
+  DEBUG_PRINTF("got up to here\n");
+
   if (!sManager->isConnected()) {
     sManager->connectScale();
   }
+
+  DEBUG_PRINTF("got past scale connect\n");
 }
 
 void BrewManager::update() {
@@ -282,19 +298,33 @@ void BrewManager::handleIdleState() {
   if (waitingForMacro) {
     if (machine.isMacroComplete()) {
       waitingForMacro = false;
-      startBrew(preset2, true);
+      // macro only runs when weight triggered preinfusion is enabled and user
+      // triggers a brew using the one cup button which doesn't support
+      // arbitrary length preinfusion on hold so we can take the regular/decaf
+      // preset and half it to get the target
+      float target = isDecafTime() ? decafPreset / 2 : regularPreset / 2;
+      startBrew(target, true);
     }
     return;
   }
 
+  float baseTarget = regularPreset;
+
+  if (isDecafTime()) {
+    baseTarget = decafPreset;
+  }
+
   if (machine.isManualStart()) {
-    startBrew(preset1, true);
+    startBrew(baseTarget, true);
   } else if (machine.isOneCupStart()) {
+
+    float halfTarget = baseTarget / 2.0f;
+
     if (pMode == WEIGHT_TRIGGERED) {
       machine.startPreinfusionMacro();
       waitingForMacro = true;
     } else {
-      startBrew(preset2, false);
+      startBrew(halfTarget, false);
     }
   }
 }
@@ -435,4 +465,21 @@ float BrewManager::getFlowCompFactor(int profileIndex) {
   if (profileIndex == 0)
     return flowCompFactors[0];
   return flowCompFactors[1];
+}
+
+bool BrewManager::isDecafTime() {
+  if (decafStartHour < 0)
+    return false;
+
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo)) {
+    return false;
+  }
+
+  return (timeinfo.tm_hour >= decafStartHour);
+}
+
+void BrewManager::syncTimezone() {
+  setenv("TZ", timezone.c_str(), 1);
+  tzset();
 }

@@ -6,9 +6,8 @@ NimBLEUUID ScaleManager::commandUUID("FF12");
 NimBLEUUID ScaleManager::weightUUID("FF11");
 
 ScaleManager::ScaleManager()
-    : pClient(nullptr), pScan(nullptr), advDevice(nullptr),
-      commandChar(nullptr), weightChar(nullptr), clientCallbacks(nullptr),
-      scanCallbacks(nullptr) {
+    : pClient(nullptr), pScan(nullptr), commandChar(nullptr),
+      weightChar(nullptr), clientCallbacks(nullptr), scanCallbacks(nullptr) {
   instance = this;
 }
 
@@ -19,7 +18,6 @@ void ScaleManager::onClientConnect() {
 
 void ScaleManager::onClientConnectFail(int reason) {
   doConnect = false;
-  advDevice = nullptr;
 
   if (bManager->isActive())
     doScan = true;
@@ -28,10 +26,17 @@ void ScaleManager::onClientConnectFail(int reason) {
 void ScaleManager::onClientDisconnect(int reason) {
   connected = false;
   doConnect = false;
-  advDevice = nullptr;
-  weightChar->unsubscribe();
+
+  if (advDevice) {
+    delete advDevice;
+    advDevice = nullptr;
+  }
+
+  if (weightChar) {
+    weightChar->unsubscribe();
+    weightChar = nullptr;
+  }
   commandChar = nullptr;
-  weightChar = nullptr;
 
   if (bManager->isActive())
     doScan = true;
@@ -50,10 +55,15 @@ void ScaleManager::onScanResult(
 
   const std::string &name = advertisedDevice->getName();
   if (name.rfind("BOOKOO", 0) == 0) {
+    if (instance->advDevice) {
+      delete instance->advDevice;
+      instance->advDevice = nullptr;
+    }
+
+    doConnect = true;
+    instance->advDevice = new NimBLEAdvertisedDevice(*advertisedDevice);
     pScan->stop();
     doScan = false;
-    advDevice = advertisedDevice;
-    doConnect = true;
   }
 }
 
@@ -107,17 +117,9 @@ void ScaleManager::notifyCallback(
 }
 
 bool ScaleManager::connectToServer() {
-  if (pClient != nullptr) {
-    pClient = NimBLEDevice::getClientByPeerAddress(advDevice->getAddress());
-    if (pClient) {
-      if (!pClient->connect(advDevice, false)) {
-        pScan->start(SCAN_TIME_MS, false, true);
-        doConnect = false;
-        return false;
-      }
-    } else {
-      pClient = NimBLEDevice::getDisconnectedClient();
-    }
+  if (advDevice == nullptr) {
+    doConnect = false;
+    return false;
   }
 
   if (!pClient) {
@@ -127,23 +129,19 @@ bool ScaleManager::connectToServer() {
 
     pClient = NimBLEDevice::createClient();
 
-    clientCallbacks = new ClientCallbacks(this);
-
-    pClient->setClientCallbacks(clientCallbacks);
-
-    pClient->setConnectionParams(12, 12, 0, 150);
-
-    pClient->setConnectTimeout(5 * 1000);
-
-    if (!pClient->connect(advDevice)) {
-      NimBLEDevice::deleteClient(pClient);
-
-      return false;
+    if (!clientCallbacks) {
+      clientCallbacks = new ClientCallbacks(this);
     }
+    pClient->setClientCallbacks(clientCallbacks);
   }
 
-  if (!pClient->isConnected()) {
-    if (!pClient->connect(advDevice)) {
+  if (pClient->isConnected()) {
+    // already connected...
+  } else {
+    DEBUG_PRINTF("ScaleManager: Connecting to %s...\n",
+                 advDevice->getAddress().toString().c_str());
+    if (!pClient->connect(advDevice, false, false, false)) {
+      DEBUG_PRINTF("connection failed....\n");
       return false;
     }
   }
@@ -161,13 +159,17 @@ bool ScaleManager::connectToServer() {
   }
 
   weightChar = pRemoteService->getCharacteristic(weightUUID);
-  if (!weightChar->canRead()) {
+  if (weightChar == nullptr || !weightChar->canRead()) {
     pClient->disconnect();
     return false;
   }
 
-  if (weightChar->canNotify())
-    weightChar->subscribe(true, notifyCallback);
+  if (weightChar->canNotify()) {
+    if (!weightChar->subscribe(true, notifyCallback)) {
+      pClient->disconnect();
+      return false;
+    }
+  }
 
   return true;
 }
@@ -289,11 +291,21 @@ void ScaleManager::disconnectScale() {
 void ScaleManager::update() {
   if (doScan) {
     doScan = false;
-    pScan->start(SCAN_TIME_MS);
+    if (!pScan->isScanning()) {
+      pScan->start(SCAN_TIME_MS);
+    }
   }
 
-  if (doConnect)
-    connectToServer();
+  if (doConnect) {
+    static unsigned long lastConnectAttempt = 0;
+    if (millis() - lastConnectAttempt > 2000) {
+      lastConnectAttempt = millis();
+
+      if (connectToServer()) {
+        doConnect = false;
+      }
+    }
+  }
 }
 
 byte TARE[6] = {0x03, 0x0a, 0x01, 0x00, 0x00, 0x08};

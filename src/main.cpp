@@ -1,6 +1,3 @@
-#include <Arduino.h>
-#include <ArduinoOTA.h>
-#include <NimBLEDevice.h>
 #include <Adafruit_NeoPixel.h>
 #include "debug.h"
 #include "BrewManager.h"

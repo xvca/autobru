@@ -1,6 +1,9 @@
-// WebApi.cpp
 #include "WebApi.h"
 #include "credentials.h"
+#include "debug.h"
+#include <Arduino.h>
+#include <ArduinoOTA.h>
+#include <WiFi.h>
 #include <cstdint>
 
 WebAPI *WebAPI::instance = nullptr;
@@ -13,11 +16,17 @@ void WebAPI::setupWiFi() {
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
   while (WiFi.waitForConnectResult() != WL_CONNECTED) {
+    DEBUG_PRINTF("Attempting reconnect in 5...\n");
     delay(5000);
-    ESP.restart();
+    WiFi.disconnect();
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   }
 
-  DEBUG_PRINTF("Connected to WiFi, IP: %s\n", WiFi.localIP().toString());
+  if (WiFi.status() == WL_CONNECTED) {
+    DEBUG_PRINTF("Connected to WiFi, IP: %s\n", WiFi.localIP().toString());
+    configTime(0, 0, "pool.ntp.org");
+    bManager->syncTimezone();
+  }
 }
 
 void WebAPI::setupWebSocket() {
@@ -246,11 +255,13 @@ void WebAPI::setupRoutes() {
           return;
         }
 
-        // Print all received parameters
+        // Check for ALL required parameters
         if (!request->hasParam("isEnabled", true) ||
-            !request->hasParam("preset1", true) ||
-            !request->hasParam("preset2", true) ||
-            !request->hasParam("pMode", true)) {
+            !request->hasParam("regularPreset", true) ||
+            !request->hasParam("decafPreset", true) ||
+            !request->hasParam("pMode", true) ||
+            !request->hasParam("decafStartHour", true) ||
+            !request->hasParam("timezone", true)) {
           handleError(request, 400, "Missing required parameters");
           return;
         }
@@ -260,14 +271,23 @@ void WebAPI::setupRoutes() {
         prefs.isEnabled =
             request->getParam("isEnabled", true)->value().equals("true");
 
-        prefs.preset1 = request->getParam("preset1", true)->value().toFloat();
+        prefs.regularPreset =
+            request->getParam("regularPreset", true)->value().toFloat();
 
-        prefs.preset2 = request->getParam("preset2", true)->value().toFloat();
+        prefs.decafPreset =
+            request->getParam("decafPreset", true)->value().toFloat();
 
         prefs.pMode =
             PreinfusionMode(request->getParam("pMode", true)->value().toInt());
 
+        prefs.decafStartHour =
+            request->getParam("decafStartHour", true)->value().toInt();
+
+        prefs.timezone = request->getParam("timezone", true)->value();
+
         bManager->setPrefs(prefs);
+
+        bManager->syncTimezone();
 
         AsyncWebServerResponse *response = request->beginResponse(
             200, "application/json", "{\"message\": \"Preferences updated\"}");
@@ -275,25 +295,30 @@ void WebAPI::setupRoutes() {
         request->send(response);
       });
 
-  server.on(
-      "/prefs", HTTP_GET, [this, &handleError](AsyncWebServerRequest *request) {
-        if (!bManager) {
-          handleError(request, 400, "Brew manager not initialized");
-          return;
-        }
+  server.on("/prefs", HTTP_GET,
+            [this, &handleError](AsyncWebServerRequest *request) {
+              if (!bManager) {
+                handleError(request, 400, "Brew manager not initialized");
+                return;
+              }
 
-        BrewPrefs prefs = bManager->getPrefs();
-        String response =
-            "{\"isEnabled\":" + String(prefs.isEnabled ? "true" : "false") +
-            ",\"preset1\":" + String(prefs.preset1) +
-            ",\"preset2\":" + String(prefs.preset2) +
-            ",\"pMode\":" + String(prefs.pMode) + "}";
+              BrewPrefs prefs = bManager->getPrefs();
 
-        AsyncWebServerResponse *resp =
-            request->beginResponse(200, "application/json", response);
-        resp->addHeader("Access-Control-Allow-Origin", "*");
-        request->send(resp);
-      });
+              String response = "{";
+              response +=
+                  "\"isEnabled\":" + String(prefs.isEnabled ? "true" : "false");
+              response += ",\"regularPreset\":" + String(prefs.regularPreset);
+              response += ",\"decafPreset\":" + String(prefs.decafPreset);
+              response += ",\"pMode\":" + String(prefs.pMode);
+              response += ",\"decafStartHour\":" + String(prefs.decafStartHour);
+              response += ",\"timezone\":\"" + prefs.timezone + "\"";
+              response += "}";
+
+              AsyncWebServerResponse *resp =
+                  request->beginResponse(200, "application/json", response);
+              resp->addHeader("Access-Control-Allow-Origin", "*");
+              request->send(resp);
+            });
 
   server.on(
       "/data", HTTP_GET, [this, &handleError](AsyncWebServerRequest *request) {
@@ -319,9 +344,10 @@ void WebAPI::setupRoutes() {
             response += ",";
 
           response += "{\"id\":" + String(shots0[i].id) +
-                      ",\"t\":" + String(shots0[i].targetWeight) +
-                      ",\"f\":" + String(shots0[i].finalWeight) +
-                      ",\"r\":" + String(shots0[i].lastFlowRate) + "}";
+                      ",\"targetWeight\":" + String(shots0[i].targetWeight) +
+                      ",\"finalWeight\":" + String(shots0[i].finalWeight) +
+                      ",\"lastFlowRate\":" + String(shots0[i].lastFlowRate) +
+                      "}";
         }
         response += "]},";
 
@@ -334,9 +360,10 @@ void WebAPI::setupRoutes() {
             response += ",";
 
           response += "{\"id\":" + String(shots1[i].id) +
-                      ",\"t\":" + String(shots1[i].targetWeight) +
-                      ",\"f\":" + String(shots1[i].finalWeight) +
-                      ",\"r\":" + String(shots1[i].lastFlowRate) + "}";
+                      ",\"targetWeight\":" + String(shots1[i].targetWeight) +
+                      ",\"finalWeight\":" + String(shots1[i].finalWeight) +
+                      ",\"lastFlowRate\":" + String(shots1[i].lastFlowRate) +
+                      "}";
         }
         response += "]}";
 
@@ -359,14 +386,15 @@ void WebAPI::setupRoutes() {
 }
 
 void WebAPI::begin() {
+  sManager = ScaleManager::getInstance();
+  bManager = BrewManager::getInstance();
+
+  DEBUG_PRINTF("Entering wifi setup\n");
   setupWiFi();
   setupWebSocket();
   setupRoutes();
   updateServer.setup(&server);
   server.begin();
-
-  sManager = ScaleManager::getInstance();
-  bManager = BrewManager::getInstance();
 }
 
 void WebAPI::update() {
