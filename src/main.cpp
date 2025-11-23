@@ -1,11 +1,11 @@
-#include "BrewManager.h"
-#include "ScaleManager.h"
-#include "WebApi.h"
-#include "debug.h"
-#include <Adafruit_NeoPixel.h>
 #include <Arduino.h>
 #include <ArduinoOTA.h>
 #include <NimBLEDevice.h>
+#include <Adafruit_NeoPixel.h>
+#include "debug.h"
+#include "BrewManager.h"
+#include "ScaleManager.h"
+#include "WebApi.h"
 
 static ScaleManager *sManager;
 static BrewManager *bManager;

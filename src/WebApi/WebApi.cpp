@@ -125,7 +125,7 @@ void WebAPI::setupRoutes() {
           return false;
         }
 
-        bManager->stopBrew();
+        bManager->finishBrew();
 
         AsyncWebServerResponse *response = request->beginResponse(
             200, "application/json", "{\"message\": \"Brew stopped\"}");
@@ -164,68 +164,62 @@ void WebAPI::setupRoutes() {
       "/clear-shot", HTTP_POST,
       [this, &handleError](AsyncWebServerRequest *request) {
         if (!bManager) {
-          handleError(request, 400, "Brew manager not initialized");
-          return false;
+          handleError(request, 500, "Brew manager not initialized");
+          return;
         }
 
-        if (!bManager->isEnabled()) {
-          handleError(
-              request, 400,
-              "Brew control is currently disabled. Please enable in settings");
-          return false;
+        if (!request->hasParam("id", true)) {
+          handleError(request, 400, "Missing 'id' parameter");
+          return;
         }
 
-        if (!request->hasParam("index", true)) {
-          handleError(request, 400, "Missing target weight parameter");
-          return false;
+        String idStr = request->getParam("id", true)->value();
+        long idVal = idStr.toInt();
+
+        if (idVal <= 0) {
+          handleError(request, 400, "Invalid Shot ID");
+          return;
         }
 
-        int index = request->getParam("index", true)->value().toInt();
-        if (index < 0 || index > MAX_STORED_SHOTS) {
-          handleError(request, 400,
-                      "Invalid shot index (must be between 0-" +
-                          MAX_STORED_SHOTS);
-          return false;
+        bool success = bManager->deleteShotById((uint32_t)idVal);
+
+        if (success) {
+          AsyncWebServerResponse *response = request->beginResponse(
+              200, "application/json",
+              "{\"success\": true, \"message\": \"Shot deleted\", \"id\": " +
+                  idStr + "}");
+          response->addHeader("Access-Control-Allow-Origin", "*");
+          request->send(response);
+        } else {
+          handleError(request, 404, "Shot ID not found");
         }
-
-        bManager->clearSingleShotData(index);
-
-        AsyncWebServerResponse *response = request->beginResponse(
-            200, "application/json",
-            "{\"message\": \"Deleted shot\", \"index\": " + String(index) +
-                "}");
-        response->addHeader("Access-Control-Allow-Origin", "*");
-        request->send(response);
-
-        return true;
       });
 
-  server.on(
-      "/recalc-comp-factor", HTTP_POST,
-      [this, &handleError](AsyncWebServerRequest *request) {
-        if (!bManager) {
-          handleError(request, 400, "Brew manager not initialized");
-          return false;
-        }
+  server.on("/recalc-comp-factor", HTTP_POST,
+            [this, &handleError](AsyncWebServerRequest *request) {
+              if (!bManager) {
+                handleError(request, 400, "Brew manager not initialized");
+                return false;
+              }
 
-        if (!bManager->isEnabled()) {
-          handleError(
-              request, 400,
-              "Brew control is currently disabled. Please enable in settings");
-          return false;
-        }
+              if (!bManager->isEnabled()) {
+                handleError(request, 400,
+                            "Brew control is currently disabled. Please "
+                            "enable in settings");
+                return false;
+              }
 
-        bManager->recalculateCompFactor();
+              bManager->recalculateCompFactor();
 
-        AsyncWebServerResponse *response = request->beginResponse(
-            200, "application/json",
-            "{\"message\": \"new flow comp factor\", \"\": " +
-                String(bManager->getFlowCompFactor()) + "}");
-        response->addHeader("Access-Control-Allow-Origin", "*");
-        request->send(response);
+              AsyncWebServerResponse *response = request->beginResponse(
+                  200, "application/json",
+                  "{\"message\": \"new flow comp factor\", \"\": " +
+                      String(bManager->getFlowCompFactor(1)) + "}");
+              response->addHeader("Access-Control-Allow-Origin", "*");
+              request->send(response);
 
-        return true;
-      });
+              return true;
+            });
 
   server.on("/wake", HTTP_POST,
             [this, &handleError](AsyncWebServerRequest *request) {
@@ -301,32 +295,58 @@ void WebAPI::setupRoutes() {
         request->send(resp);
       });
 
-  server.on("/data", HTTP_GET,
-            [this, &handleError](AsyncWebServerRequest *request) {
-              if (!bManager) {
-                handleError(request, 400, "Brew manager not initialized");
-                return;
-              }
+  server.on(
+      "/data", HTTP_GET, [this, &handleError](AsyncWebServerRequest *request) {
+        if (!bManager) {
+          handleError(request, 400, "Brew manager not initialized");
+          return;
+        }
 
-              const Shot *shots = bManager->getRecentShots();
-              float flowComp = bManager->getFlowCompFactor();
+        const Shot *shots0 = bManager->getRecentShots(0);
+        const Shot *shots1 = bManager->getRecentShots(1);
 
-              String response = "{\"shots\":[";
-              for (int i = 0; i < MAX_STORED_SHOTS; i++) {
-                if (i > 0)
-                  response += ",";
-                response +=
-                    "{\"targetWeight\":" + String(shots[i].targetWeight) +
-                    ",\"finalWeight\":" + String(shots[i].finalWeight) +
-                    ",\"lastFlowRate\":" + String(shots[i].lastFlowRate) + "}";
-              }
-              response += "],\"flowCompFactor\":" + String(flowComp) + "}";
+        float factor0 = bManager->getFlowCompFactor(0);
+        float factor1 = bManager->getFlowCompFactor(1);
 
-              AsyncWebServerResponse *resp =
-                  request->beginResponse(200, "application/json", response);
-              resp->addHeader("Access-Control-Allow-Origin", "*");
-              request->send(resp);
-            });
+        String response = "{";
+
+        response += "\"p0\":{\"factor\":" + String(factor0) + ",\"shots\":[";
+        for (int i = 0; i < MAX_STORED_SHOTS; i++) {
+          if (shots0[i].id == 0)
+            continue;
+
+          if (i > 0 && shots0[i - 1].id != 0)
+            response += ",";
+
+          response += "{\"id\":" + String(shots0[i].id) +
+                      ",\"t\":" + String(shots0[i].targetWeight) +
+                      ",\"f\":" + String(shots0[i].finalWeight) +
+                      ",\"r\":" + String(shots0[i].lastFlowRate) + "}";
+        }
+        response += "]},";
+
+        response += "\"p1\":{\"factor\":" + String(factor1) + ",\"shots\":[";
+        for (int i = 0; i < MAX_STORED_SHOTS; i++) {
+          if (shots1[i].id == 0)
+            continue;
+
+          if (i > 0 && shots1[i - 1].id != 0)
+            response += ",";
+
+          response += "{\"id\":" + String(shots1[i].id) +
+                      ",\"t\":" + String(shots1[i].targetWeight) +
+                      ",\"f\":" + String(shots1[i].finalWeight) +
+                      ",\"r\":" + String(shots1[i].lastFlowRate) + "}";
+        }
+        response += "]}";
+
+        response += "}";
+
+        AsyncWebServerResponse *resp =
+            request->beginResponse(200, "application/json", response);
+        resp->addHeader("Access-Control-Allow-Origin", "*");
+        request->send(resp);
+      });
 
   // Add OPTIONS handlers for CORS
   server.on("/start", HTTP_OPTIONS, [](AsyncWebServerRequest *request) {

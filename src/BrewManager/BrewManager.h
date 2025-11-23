@@ -1,13 +1,14 @@
 #ifndef BREW_MANAGER_H
 #define BREW_MANAGER_H
 
+#include "MachineController.h"
 #include "ScaleManager.h"
 #include <Arduino.h>
 #include <Preferences.h>
 
 class ScaleManager;
 
-static constexpr int MAX_STORED_SHOTS = 25;
+static constexpr int MAX_STORED_SHOTS = 12;
 /**
  * From personal experience using a spouted portafilter, flow comp would reach
  * equilibrium at around 1.3
@@ -25,7 +26,7 @@ enum BrewState { IDLE, PREINFUSION, BREWING, DRIPPING };
 
 /**
  * SIMPLE           -> Machine defined preinfusion duration
- * WEIGHT_TRIGGERED -> Preinfuses until 1g detected on scale
+ * WEIGHT_TRIGGERED -> Preinfuses until weight detected on scale
  */
 enum PreinfusionMode { SIMPLE, WEIGHT_TRIGGERED };
 
@@ -37,6 +38,7 @@ struct BrewPrefs {
 };
 
 struct Shot {
+  uint32_t id;
   float targetWeight;
   float finalWeight;
   float lastFlowRate;
@@ -51,78 +53,67 @@ private:
 
   static BrewManager *instance;
 
+  // deps
+  MachineController machine;
+  ScaleManager *sManager;
+  Preferences preferences;
+
+  // state
   bool enabled = true;
   bool active = false;
+  bool waitingForMacro = false;
 
-  ulong lastActiveTime = 0;
+  uint32_t globalShotCounter = 0;
 
-  // Pin definitions
-#ifdef DEBUG_BUILD
-  static constexpr uint8_t MANUAL_PIN = 25;
-  static constexpr uint8_t TWO_CUP_PIN = 26;
-  static constexpr uint8_t ONE_CUP_PIN = 32;
-  static constexpr uint8_t BREW_SWITCH_PIN = 33;
-#else
-  static constexpr uint8_t MANUAL_PIN = 1;
-  static constexpr uint8_t TWO_CUP_PIN = 2;
-  static constexpr uint8_t ONE_CUP_PIN = 3;
-  static constexpr uint8_t BREW_SWITCH_PIN = 4;
-#endif
+  BrewState state = IDLE;
+  PreinfusionMode pMode;
 
+  // brew data
   float targetWeight;
   float currentWeight;
   float lastFlowRate;
   float stopWeight;
 
-  BrewState state = IDLE;
-  PreinfusionMode pMode;
+  ulong brewStartTime = 0;
+  ulong brewEndTime = 0;
+  ulong lastActiveTime = 0;
 
-  static const unsigned int ACTIVITY_TIMEOUT = 10 * 60 * 1000;
-  static const unsigned int MAX_SHOT_DURATION = 60 * 1000;
+  // beep stuff
+  int pendingBeeps = 0;
+  ulong lastBeepTime = 0;
 
-  ulong lastButtonPressTime = 0;
-  bool brewSwitchState = false;
-  static constexpr unsigned long BUTTON_DEBOUNCE_TIME = 250;
-
-  unsigned long brewStartTime = 0;
-  unsigned long brewEndTime = 0;
-
-  void handleSimplePreinfusion();
-  void handleWeightTriggeredPreinfusion();
-
-  void setBrewSwitch(bool state);
-  void triggerBrewSwitch(int duration);
-  bool isPressed(uint8_t button);
-
-  ScaleManager *sManager;
-
-  void setState(BrewState newState);
-
-  Preferences preferences;
-
+  // constants
+  static const uint ACTIVITY_TIMEOUT = 10 * 60 * 1000;
+  static const uint MAX_SHOT_DURATION = 60 * 1000;
   static constexpr float LEARNING_RATE = 0.2;
-  static constexpr float MIN_FLOW_COMP = 0.5;
+  static constexpr float MIN_FLOW_COMP = 0.2;
   static constexpr float MAX_FLOW_COMP = 2.5;
-  static constexpr unsigned long DRIP_SETTLE_TIME = 10 * 1000;
+  static constexpr ulong DRIP_SETTLE_TIME = 10 * 1000;
 
+  // threshold to decide between profile 0 (split shots) and profile 1 (full)
+  static constexpr float PROFILE_THRESHOLD_WEIGHT = 28.0f;
+
+  // settings
   float preset1;
   float preset2;
 
-  Shot recentShots[MAX_STORED_SHOTS];
+  // seperate history for each profile to prevent learning pollution
+  Shot recentShotsProfile0[MAX_STORED_SHOTS];
+  Shot recentShotsProfile1[MAX_STORED_SHOTS];
 
+  float flowCompFactors[2];
+  int currentProfileIndex = 1;
+
+  // helpers
   void computeCompFactor();
-  void computeCompFactorFromScratch();
-
+  void computeCompFactorFromScratch(int profileIdx);
   void loadSettings();
   void saveSettings();
-
   void finalizeBrew();
 
-  /**
-   * Auto-adjusting factor - when multiplied by flow rate determines when to
-   * stop the brew
-   */
-  float flowCompFactor;
+  // internal state handlers
+  void handleIdleState();
+  void handleActiveState();
 
 public:
   static BrewManager *getInstance() {
@@ -135,31 +126,37 @@ public:
   void begin();
   void update();
 
-  BrewState getState() const { return state; }
-  float getTargetWeight() const { return targetWeight; }
+  // api
 
-  void clearShotData();
-  void clearSingleShotData(int index);
+  // startBrew called by API or logic
+  // if manualOverride true, assume the button is already being pressed by the
+  // user/macro
+  bool startBrew(float target, bool manualOverride = false);
 
-  void recalculateCompFactor();
+  // user pressed a button, cancelling brew, doesn't trigger relay
+  bool abortBrew();
+
+  // target weight or other finishing condition reached. stop tracking and
+  // trigger relay  to stop brewing
+  bool finishBrew();
 
   void wake();
-
   bool isActive() { return active; }
-
-  bool startBrew(float target = 40, bool triggerBrew = true);
-  bool stopBrew();
   bool isBrewing() const { return state != IDLE; }
-
   bool isEnabled() const { return enabled; }
+  BrewState getState() const { return state; }
+  float getTargetWeight() const { return targetWeight; }
+  ulong getBrewTime();
+
+  void clearShotData();
+  bool deleteShotById(uint32_t id);
+  void recalculateCompFactor();
 
   BrewPrefs getPrefs();
   void setPrefs(BrewPrefs prefs);
 
-  unsigned long getBrewTime();
-
-  Shot *getRecentShots() { return recentShots; }
-  float getFlowCompFactor() { return flowCompFactor; }
+  Shot *getRecentShots(int profileIndex);
+  float getFlowCompFactor(int profileIndex);
 };
 
 #endif

@@ -5,6 +5,7 @@
 #include "debug.h"
 #include <NimBLEDevice.h>
 #include <atomic>
+#include <numeric>
 
 struct ScaleData {
   uint32_t milliseconds;
@@ -15,6 +16,11 @@ struct ScaleData {
   uint16_t standbyMinutes;
   uint8_t buzzerGear;
   uint8_t flowRateSmoothing;
+};
+
+struct FlowPoint {
+  float timeSecs;
+  float weight;
 };
 
 class BrewManager;
@@ -45,6 +51,7 @@ public:
   float getWeight() const { return latestWeight.load(); }
   uint32_t getTime() const { return latestTime.load(); }
   float getFlowRate() const { return latestFlowRate.load(); }
+  uint32_t getLastPacketTime() const { return lastPacketTime.load(); }
 
   void onClientConnect();
   void onClientConnectFail(int reason);
@@ -73,6 +80,17 @@ private:
   std::atomic<float> latestWeight{0.0f};
   std::atomic<uint32_t> latestTime{0};
   std::atomic<float> latestFlowRate{0.0f};
+  std::atomic<uint32_t> lastPacketTime{0};
+
+  // flow tracking
+  // number of samples to hold in our flow history
+  static const size_t FLOW_WINDOW_SIZE = 6;
+  FlowPoint flowBuffer[FLOW_WINDOW_SIZE];
+  size_t bufHead = 0;
+  size_t bufCount = 0;
+
+  void resetFlowBuffer();
+  float calculateLinearRegressionFlow();
 
   bool connectToServer();
 
@@ -96,7 +114,6 @@ private:
   bool doScan = false;
   bool doConnect = false;
   bool connected = false;
-  ulong lastNotification = 0;
 
   BrewManager *bManager;
 

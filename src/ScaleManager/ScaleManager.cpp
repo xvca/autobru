@@ -70,26 +70,40 @@ void ScaleManager::notifyCallback(
   if (!instance)
     return;
 
-  uint32_t currentTime = millis();
+  // throttling, reenable if needed
+  // uint32_t currentTime = millis();
+  // if (currentTime - instance->lastPacketTime.load() < NOTIFICATION_INTERVAL)
+  // {
+  //   return;
+  // }
 
-  if (currentTime - instance->lastNotification < NOTIFICATION_INTERVAL) {
-    return;
-  }
-
-  instance->lastNotification = currentTime;
-
-  std::string str = (isNotify == true) ? "Notification" : "Indication";
-  str += " from ";
-  str += pRemoteCharacteristic->getClient()->getPeerAddress().toString();
-  str += ": Service = " +
-         pRemoteCharacteristic->getRemoteService()->getUUID().toString();
-  str += ", Characteristic = " + pRemoteCharacteristic->getUUID().toString();
+  uint32_t now = millis();
 
   ScaleData sData = instance->parseScaleData(pData, length);
 
-  instance->latestWeight = sData.weightGrams;
-  instance->latestTime = sData.milliseconds;
-  instance->latestFlowRate = sData.flowRate;
+  instance->lastPacketTime.store(now);
+
+  instance->flowBuffer[instance->bufHead].timeSecs =
+      (float)sData.milliseconds / 1000.0f;
+  instance->flowBuffer[instance->bufHead].weight = sData.weightGrams;
+
+  instance->bufHead = (instance->bufHead + 1) % FLOW_WINDOW_SIZE;
+
+  if (instance->bufCount < FLOW_WINDOW_SIZE) {
+    instance->bufCount++;
+  }
+
+  float smoothedFlowRate;
+
+  if (instance->bufCount >= 3) {
+    smoothedFlowRate = instance->calculateLinearRegressionFlow();
+  } else {
+    smoothedFlowRate = 0.0f;
+  }
+
+  instance->latestWeight.store(sData.weightGrams);
+  instance->latestTime.store(sData.milliseconds);
+  instance->latestFlowRate.store(smoothedFlowRate);
 }
 
 bool ScaleManager::connectToServer() {
@@ -210,6 +224,43 @@ void ScaleManager::printScaleData(const ScaleData &data) {
   Serial.println(F("----------------------"));
 }
 
+float ScaleManager::calculateLinearRegressionFlow() {
+  if (bufCount < 2)
+    return 0.0f;
+
+  float sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
+
+  // find index of oldest point (where the window starts)
+  size_t oldestIndex =
+      (bufHead + FLOW_WINDOW_SIZE - bufCount) % FLOW_WINDOW_SIZE;
+
+  float timeOffset = flowBuffer[oldestIndex].timeSecs;
+
+  for (size_t i = 0; i < bufCount; i++) {
+    size_t idx = (oldestIndex + i) % FLOW_WINDOW_SIZE;
+
+    float x = flowBuffer[idx].timeSecs - timeOffset;
+    float y = flowBuffer[idx].weight;
+
+    sumX += x;
+    sumY += y;
+    sumXY += (x * y);
+    sumXX += (x * x);
+  }
+
+  float denom = (bufCount * sumXX) - (sumX * sumX);
+
+  if (denom == 0)
+    return 0.0f;
+
+  return ((bufCount * sumXY) - (sumX * sumY)) / denom;
+}
+
+void ScaleManager::resetFlowBuffer() {
+  bufHead = 0;
+  bufCount = 0;
+}
+
 void ScaleManager::begin() {
   BLEDevice::init("autobru-client");
 
@@ -262,6 +313,7 @@ bool ScaleManager::tare() {
 
 bool ScaleManager::startTimer() {
   if (commandChar->writeValue(START_TIMER)) {
+    resetFlowBuffer();
     return true;
   } else {
     return false;
@@ -286,6 +338,7 @@ bool ScaleManager::resetTimer() {
 
 bool ScaleManager::startAndTare() {
   if (commandChar->writeValue(START_AND_TARE)) {
+    resetFlowBuffer();
     return true;
   } else {
     return false;

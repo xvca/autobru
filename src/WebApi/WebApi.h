@@ -3,8 +3,7 @@
 #include "debug.h"
 #include <ESPAsyncHTTPUpdateServer.h>
 #include <ESPAsyncWebServer.h>
-
-#define DEFAULT_MAX_WS_CLIENTS 1
+#include <WiFi.h>
 
 struct BrewMetrics {
   float weight;
