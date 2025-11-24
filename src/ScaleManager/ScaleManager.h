@@ -5,6 +5,7 @@
 #include "debug.h"
 #include <NimBLEDevice.h>
 #include <atomic>
+#include <mutex>
 #include <numeric>
 
 struct ScaleData {
@@ -43,9 +44,11 @@ public:
   void disconnectScale();
   void connectScale();
 
-  bool preScanning() const { return doScan; }
-  bool isScanning() const { return pScan->isScanning(); }
-  bool isConnecting() const { return doConnect; }
+  void cleanUpConnectionState();
+
+  bool preScanning() const { return shouldScan; }
+  bool isScanning() const { return (pScan != nullptr) && pScan->isScanning(); }
+  bool isConnecting() const { return shouldConnect; }
   bool isConnected() const { return connected; }
 
   float getWeight() const { return latestWeight.load(); }
@@ -74,8 +77,11 @@ private:
 
   static constexpr int SCAN_TIME_MS = 5000;
   static constexpr int NOTIFICATION_INTERVAL = 20;
+  static constexpr int CONNECTION_TIMEOUT_MS = 3000;
 
   static ScaleManager *instance;
+
+  std::mutex scaleMutex;
 
   std::atomic<float> latestWeight{0.0f};
   std::atomic<uint32_t> latestTime{0};
@@ -103,7 +109,7 @@ private:
   NimBLEClient *pClient;
   NimBLEScan *pScan;
 
-  NimBLEAdvertisedDevice *advDevice = nullptr;
+  NimBLEAddress targetAddress = NimBLEAddress();
 
   NimBLERemoteCharacteristic *commandChar;
   NimBLERemoteCharacteristic *weightChar;
@@ -111,9 +117,9 @@ private:
   ClientCallbacks *clientCallbacks;
   ScanCallbacks *scanCallbacks;
 
-  bool doScan = false;
-  bool doConnect = false;
-  bool connected = false;
+  std::atomic<bool> shouldScan{false};
+  std::atomic<bool> shouldConnect{false};
+  std::atomic<bool> connected{false};
 
   BrewManager *bManager;
 

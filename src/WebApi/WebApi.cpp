@@ -232,10 +232,14 @@ void WebAPI::setupRoutes() {
 
   server.on("/wake", HTTP_POST,
             [this, &handleError](AsyncWebServerRequest *request) {
-              if (!bManager->isActive()) {
+              if (!bManager->isEnabled()) {
+                handleError(request, 400,
+                            "Please enable your device in bru settings");
+                return;
+              } else if (!bManager->isActive()) {
                 bManager->wake();
               } else {
-                handleError(request, 400, "Brew manager already active");
+                handleError(request, 400, "Already awake!");
                 return;
               }
 
@@ -394,6 +398,7 @@ void WebAPI::begin() {
   setupWebSocket();
   setupRoutes();
   updateServer.setup(&server);
+  updateServer.onUpdateBegin = [](const UpdateType type, int &result) {};
   server.begin();
 }
 
@@ -403,7 +408,9 @@ void WebAPI::update() {
     lastWiFiCheck = millis();
   }
 
-  if (millis() - lastWebSocketUpdate >= WEBSOCKET_INTERVAL) {
+  uint32_t currentInterval = bManager->isBrewing() ? 100 : 500;
+
+  if (millis() - lastWebSocketUpdate >= currentInterval) {
     broadcastBrewMetrics();
     lastWebSocketUpdate = millis();
   }

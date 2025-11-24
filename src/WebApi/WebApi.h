@@ -30,7 +30,6 @@ private:
   ulong lastWiFiCheck = 0;
 
   static constexpr ushort MAX_WS_CLIENTS = 1;
-  static constexpr ushort WEBSOCKET_INTERVAL = 125;
   static constexpr ulong WIFI_CHECK_INTERVAL = 10 * 1000;
 
   void checkWiFiConnection();

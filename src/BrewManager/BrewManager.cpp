@@ -258,13 +258,9 @@ void BrewManager::wake() {
   active = true;
   lastActiveTime = millis();
 
-  DEBUG_PRINTF("got up to here\n");
-
   if (!sManager->isConnected()) {
     sManager->connectScale();
   }
-
-  DEBUG_PRINTF("got past scale connect\n");
 }
 
 void BrewManager::update() {

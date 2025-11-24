@@ -12,65 +12,46 @@ ScaleManager::ScaleManager()
 }
 
 void ScaleManager::onClientConnect() {
-  doConnect = false;
+  shouldConnect = false;
   connected = true;
+  lastPacketTime.store(millis());
 }
 
 void ScaleManager::onClientConnectFail(int reason) {
-  doConnect = false;
+  shouldConnect = false;
+  connected = false;
 
   if (bManager->isActive())
-    doScan = true;
+    shouldScan = true;
 }
 
 void ScaleManager::onClientDisconnect(int reason) {
-  connected = false;
-  doConnect = false;
-
-  if (advDevice) {
-    delete advDevice;
-    advDevice = nullptr;
-  }
-
-  if (weightChar) {
-    weightChar->unsubscribe();
-    weightChar = nullptr;
-  }
-  commandChar = nullptr;
-
-  if (bManager->isActive())
-    doScan = true;
+  DEBUG_PRINTF("Scale Disconnected (Reason: %d)\n", reason);
+  cleanUpConnectionState();
 }
 
 void ScaleManager::onScanResult(
     const NimBLEAdvertisedDevice *advertisedDevice) {
-
-  if (!advertisedDevice || !pScan) {
+  if (!advertisedDevice || !pScan)
     return;
-  }
-
-  if (!advertisedDevice->haveName()) {
+  if (!advertisedDevice->haveName())
     return;
-  }
 
   const std::string &name = advertisedDevice->getName();
   if (name.rfind("BOOKOO", 0) == 0) {
-    if (instance->advDevice) {
-      delete instance->advDevice;
-      instance->advDevice = nullptr;
-    }
-
-    doConnect = true;
-    instance->advDevice = new NimBLEAdvertisedDevice(*advertisedDevice);
+    shouldScan = false;
     pScan->stop();
-    doScan = false;
+    {
+      std::lock_guard<std::mutex> lock(instance->scaleMutex);
+      targetAddress = advertisedDevice->getAddress();
+    }
+    shouldConnect = true;
+    DEBUG_PRINTF("scale found. scan stopped. ready to connect.\n");
   }
 }
 
 void ScaleManager::onScanEnd(const NimBLEScanResults &results, int reason) {
-  if (!doConnect) {
-    pScan->start(SCAN_TIME_MS);
-  }
+  DEBUG_PRINTF("scan finished w/ reason: %d\n", reason);
 }
 
 void ScaleManager::notifyCallback(
@@ -93,22 +74,26 @@ void ScaleManager::notifyCallback(
 
   instance->lastPacketTime.store(now);
 
-  instance->flowBuffer[instance->bufHead].timeSecs =
-      (float)sData.milliseconds / 1000.0f;
-  instance->flowBuffer[instance->bufHead].weight = sData.weightGrams;
-
-  instance->bufHead = (instance->bufHead + 1) % FLOW_WINDOW_SIZE;
-
-  if (instance->bufCount < FLOW_WINDOW_SIZE) {
-    instance->bufCount++;
-  }
-
   float smoothedFlowRate;
 
-  if (instance->bufCount >= 3) {
-    smoothedFlowRate = instance->calculateLinearRegressionFlow();
-  } else {
-    smoothedFlowRate = 0.0f;
+  {
+    std::lock_guard<std::mutex> lock(instance->scaleMutex);
+
+    instance->flowBuffer[instance->bufHead].timeSecs =
+        (float)sData.milliseconds / 1000.0f;
+    instance->flowBuffer[instance->bufHead].weight = sData.weightGrams;
+
+    instance->bufHead = (instance->bufHead + 1) % FLOW_WINDOW_SIZE;
+
+    if (instance->bufCount < FLOW_WINDOW_SIZE) {
+      instance->bufCount++;
+    }
+
+    if (instance->bufCount >= 3) {
+      smoothedFlowRate = instance->calculateLinearRegressionFlow();
+    } else {
+      smoothedFlowRate = 0.0f;
+    }
   }
 
   instance->latestWeight.store(sData.weightGrams);
@@ -117,9 +102,21 @@ void ScaleManager::notifyCallback(
 }
 
 bool ScaleManager::connectToServer() {
-  if (advDevice == nullptr) {
-    doConnect = false;
+  NimBLEAddress tmp;
+
+  {
+    std::lock_guard<std::mutex> lock(scaleMutex);
+    tmp = targetAddress;
+  }
+
+  if (tmp.equals(NimBLEAddress())) {
+    shouldConnect = false;
     return false;
+  }
+
+  if (pScan && pScan->isScanning()) {
+    pScan->stop();
+    delay(10);
   }
 
   if (!pClient) {
@@ -139,34 +136,40 @@ bool ScaleManager::connectToServer() {
     // already connected...
   } else {
     DEBUG_PRINTF("ScaleManager: Connecting to %s...\n",
-                 advDevice->getAddress().toString().c_str());
-    if (!pClient->connect(advDevice, false, false, false)) {
+                 targetAddress.toString().c_str());
+    if (!pClient->connect(tmp, false, false, false)) {
       DEBUG_PRINTF("connection failed....\n");
       return false;
     }
   }
 
+  pClient->updateConnParams(120, 120, 0, 200);
+
   NimBLERemoteService *pRemoteService = pClient->getService(serviceUUID);
   if (pRemoteService == nullptr) {
     pClient->disconnect();
+    cleanUpConnectionState();
     return false;
   }
 
   commandChar = pRemoteService->getCharacteristic(commandUUID);
   if (commandChar == nullptr) {
     pClient->disconnect();
+    cleanUpConnectionState();
     return false;
   }
 
   weightChar = pRemoteService->getCharacteristic(weightUUID);
   if (weightChar == nullptr || !weightChar->canRead()) {
     pClient->disconnect();
+    cleanUpConnectionState();
     return false;
   }
 
   if (weightChar->canNotify()) {
     if (!weightChar->subscribe(true, notifyCallback)) {
       pClient->disconnect();
+      cleanUpConnectionState();
       return false;
     }
   }
@@ -259,6 +262,7 @@ float ScaleManager::calculateLinearRegressionFlow() {
 }
 
 void ScaleManager::resetFlowBuffer() {
+  std::lock_guard<std::mutex> lock(scaleMutex);
   bufHead = 0;
   bufCount = 0;
 }
@@ -271,39 +275,56 @@ void ScaleManager::begin() {
   scanCallbacks = new ScanCallbacks(this);
 
   pScan->setScanCallbacks(scanCallbacks);
-  pScan->setInterval(2000);
+  pScan->setInterval(500);
   pScan->setWindow(100);
-  pScan->setActiveScan(true);
+  pScan->setActiveScan(false);
 
   bManager = BrewManager::getInstance();
 }
 
-void ScaleManager::connectScale() {
-  if (!preScanning() && !isScanning() && !isConnecting())
-    doScan = true;
-}
+void ScaleManager::connectScale() { shouldScan = true; }
 
 void ScaleManager::disconnectScale() {
-  if (pClient->isConnected())
+  shouldConnect = false;
+  shouldScan = false;
+
+  if (pClient && pClient->isConnected()) {
     pClient->disconnect();
+  } else {
+    cleanUpConnectionState();
+  }
 }
 
 void ScaleManager::update() {
-  if (doScan) {
-    doScan = false;
-    if (!pScan->isScanning()) {
-      pScan->start(SCAN_TIME_MS);
+  if (shouldScan) {
+    if (pScan && !pScan->isScanning()) {
+      if (!shouldConnect && !connected) {
+        DEBUG_PRINTF("Restarting Scan...\n");
+        pScan->start(SCAN_TIME_MS, false);
+      }
     }
   }
 
-  if (doConnect) {
+  if (shouldConnect) {
     static unsigned long lastConnectAttempt = 0;
     if (millis() - lastConnectAttempt > 2000) {
       lastConnectAttempt = millis();
 
       if (connectToServer()) {
-        doConnect = false;
+        shouldConnect = false;
       }
+    }
+  }
+
+  if (connected) {
+    uint32_t lastTime = lastPacketTime.load();
+    if (lastTime > 0 && (millis() - lastTime > CONNECTION_TIMEOUT_MS)) {
+      DEBUG_PRINTF("Watchdog: Connection lost.\n");
+
+      if (pClient)
+        pClient->disconnect();
+
+      cleanUpConnectionState();
     }
   }
 }
@@ -316,6 +337,8 @@ byte START_AND_TARE[6] = {0x03, 0x0a, 0x07, 0x00, 0x00, 0x00};
 byte BEEP[6] = {0x03, 0x0a, 0x02, 0x00, 0x03, 0x08};
 
 bool ScaleManager::tare() {
+  if (commandChar == nullptr)
+    return false;
   if (commandChar->writeValue(TARE)) {
     return true;
   } else {
@@ -324,6 +347,8 @@ bool ScaleManager::tare() {
 };
 
 bool ScaleManager::startTimer() {
+  if (commandChar == nullptr)
+    return false;
   if (commandChar->writeValue(START_TIMER)) {
     resetFlowBuffer();
     return true;
@@ -333,6 +358,8 @@ bool ScaleManager::startTimer() {
 };
 
 bool ScaleManager::stopTimer() {
+  if (commandChar == nullptr)
+    return false;
   if (commandChar->writeValue(STOP_TIMER)) {
     return true;
   } else {
@@ -341,6 +368,8 @@ bool ScaleManager::stopTimer() {
 };
 
 bool ScaleManager::resetTimer() {
+  if (commandChar == nullptr)
+    return false;
   if (commandChar->writeValue(RESET_TIMER)) {
     return true;
   } else {
@@ -349,6 +378,8 @@ bool ScaleManager::resetTimer() {
 };
 
 bool ScaleManager::startAndTare() {
+  if (commandChar == nullptr)
+    return false;
   if (commandChar->writeValue(START_AND_TARE)) {
     resetFlowBuffer();
     return true;
@@ -358,9 +389,27 @@ bool ScaleManager::startAndTare() {
 };
 
 bool ScaleManager::beep() {
+  if (commandChar == nullptr)
+    return false;
   if (commandChar->writeValue(BEEP)) {
     return true;
   } else {
     return false;
   }
 };
+
+void ScaleManager::cleanUpConnectionState() {
+  connected = false;
+  shouldConnect = false;
+
+  resetFlowBuffer();
+  latestFlowRate = 0.0f;
+  latestWeight = 0.0f;
+
+  weightChar = nullptr;
+  commandChar = nullptr;
+
+  if (bManager && bManager->isActive()) {
+    shouldScan = true;
+  }
+}

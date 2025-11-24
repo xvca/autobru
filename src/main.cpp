@@ -1,8 +1,8 @@
-#include <Adafruit_NeoPixel.h>
-#include "debug.h"
 #include "BrewManager.h"
 #include "ScaleManager.h"
 #include "WebApi.h"
+#include "debug.h"
+#include <Adafruit_NeoPixel.h>
 
 static ScaleManager *sManager;
 static BrewManager *bManager;
@@ -44,9 +44,9 @@ void loop() {
   if (bManager->isEnabled())
     bManager->update();
 
-  if (!bManager->isActive()) {
-    delay(100);
-  } else {
+  if (bManager->isActive()) {
     sManager->update();
+  } else {
+    delay(100);
   }
 }
