@@ -24,10 +24,19 @@ void MachineController::update() {
   }
 
   if (macroRunning) {
-    macroFinished = false;
-    if (millis() >= macroStepTime) {
-      macroRunning = false;
+    if (macroStep == 0 && millis() >= macroNextActionTime) {
+      // 100ms have passed since user pressed the brew button, we click the
+      // relay to stop that brew
+      clickRelay();
+
+      macroStep = 1;
+
+      macroNextActionTime = millis() + 200;
+    } else if (macroStep == 1 && millis() >= macroNextActionTime) {
+      // now we can start proper preinfusion via the relay;
       holdRelay();
+
+      macroRunning = false;
       macroFinished = true;
     }
   }
@@ -60,10 +69,11 @@ void MachineController::releaseRelay() {
 }
 
 void MachineController::startPreinfusionMacro() {
-  clickRelay();
   macroRunning = true;
   macroFinished = false;
-  macroStepTime = millis() + 250;
+  macroStep = 0;
+
+  macroNextActionTime = millis() + 200;
 }
 
 bool MachineController::isMacroComplete() {

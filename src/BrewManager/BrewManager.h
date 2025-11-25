@@ -136,12 +136,12 @@ public:
   // api
 
   // startBrew called by API or logic
-  // if manualOverride true, assume the button is already being pressed by the
-  // user/macro
-  bool startBrew(float target, bool manualOverride = false);
+  // if shouldTriggerRelay = false, assume the button is already being pressed
+  // by the user/macro
+  bool startBrew(float target, bool shouldTriggerRelay = false);
 
   // user pressed a button, cancelling brew, doesn't trigger relay
-  bool abortBrew();
+  bool abortBrew(bool shouldTriggerRelay = false);
 
   // target weight or other finishing condition reached. stop tracking and
   // trigger relay  to stop brewing

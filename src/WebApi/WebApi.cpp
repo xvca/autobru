@@ -35,7 +35,10 @@ void WebAPI::setupWebSocket() {
     switch (type) {
     case WS_EVT_CONNECT:
       if (ws.count() > MAX_WS_CLIENTS) {
+        DEBUG_PRINTF("count is %d max clients hit, cleaning up clients\n",
+                     ws.count());
         ws.cleanupClients(MAX_WS_CLIENTS);
+        DEBUG_PRINTF("count is %d after clearing\n", ws.count());
       }
       DEBUG_PRINTF("WebSocket client #%u connected from %s\n", client->id(),
                    client->remoteIP().toString().c_str());
@@ -134,7 +137,7 @@ void WebAPI::setupRoutes() {
           return false;
         }
 
-        bManager->finishBrew();
+        bManager->abortBrew();
 
         AsyncWebServerResponse *response = request->beginResponse(
             200, "application/json", "{\"message\": \"Brew stopped\"}");
@@ -408,7 +411,7 @@ void WebAPI::update() {
     lastWiFiCheck = millis();
   }
 
-  uint32_t currentInterval = bManager->isBrewing() ? 100 : 500;
+  uint32_t currentInterval = bManager->isBrewing() ? 125 : 500;
 
   if (millis() - lastWebSocketUpdate >= currentInterval) {
     broadcastBrewMetrics();

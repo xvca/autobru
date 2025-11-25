@@ -267,6 +267,8 @@ void BrewManager::update() {
   if (!enabled)
     return;
 
+  // DEBUG_PRINTF("entering update, state = %d\n", state);
+
   machine.update();
 
   if (pendingBeeps > 0 && millis() - lastBeepTime > 150) {
@@ -278,6 +280,11 @@ void BrewManager::update() {
   if (active && millis() - lastActiveTime > ACTIVITY_TIMEOUT) {
     active = false;
     sManager->disconnectScale();
+  }
+
+  if (machine.isTwoCupStart()) {
+    wake();
+    return;
   }
 
   if (!active)
@@ -299,7 +306,7 @@ void BrewManager::handleIdleState() {
       // arbitrary length preinfusion on hold so we can take the regular/decaf
       // preset and half it to get the target
       float target = isDecafTime() ? decafPreset / 2 : regularPreset / 2;
-      startBrew(target, true);
+      startBrew(target, false);
     }
     return;
   }
@@ -311,7 +318,7 @@ void BrewManager::handleIdleState() {
   }
 
   if (machine.isManualStart()) {
-    startBrew(baseTarget, true);
+    startBrew(baseTarget, false);
   } else if (machine.isOneCupStart()) {
 
     float halfTarget = baseTarget / 2.0f;
@@ -328,13 +335,7 @@ void BrewManager::handleIdleState() {
 void BrewManager::handleActiveState() {
   // check for brew cancellation
   if (machine.isStopPressed()) {
-    abortBrew();
-    return;
-  }
-
-  // check for manual release
-  if (machine.isManualReleased()) {
-    abortBrew();
+    abortBrew(false);
     return;
   }
 
@@ -384,11 +385,12 @@ void BrewManager::handleActiveState() {
   }
 }
 
-bool BrewManager::startBrew(float target, bool manualOverride) {
+bool BrewManager::startBrew(float target, bool shouldTriggerRelay) {
   if (!enabled || !sManager->isConnected() || isBrewing())
     return false;
 
   targetWeight = target;
+  lastActiveTime = millis();
 
   if (targetWeight < PROFILE_THRESHOLD_WEIGHT) {
     currentProfileIndex = 0;
@@ -399,7 +401,7 @@ bool BrewManager::startBrew(float target, bool manualOverride) {
   brewStartTime = millis();
   sManager->startAndTare();
 
-  if (manualOverride) {
+  if (!shouldTriggerRelay) {
     state = (pMode == SIMPLE) ? BREWING : PREINFUSION;
   } else {
     if (pMode == SIMPLE) {
@@ -414,7 +416,7 @@ bool BrewManager::startBrew(float target, bool manualOverride) {
   return true;
 }
 
-bool BrewManager::abortBrew() {
+bool BrewManager::abortBrew(bool shouldTriggerRelay) {
   // user pressed the button so machine is stopping physically, just need to
   // reset logic
 
@@ -423,6 +425,10 @@ bool BrewManager::abortBrew() {
 
   if (state == PREINFUSION) {
     machine.releaseRelay();
+  }
+
+  if (shouldTriggerRelay) {
+    machine.clickRelay();
   }
 
   state = IDLE;
@@ -441,6 +447,8 @@ bool BrewManager::finishBrew() {
   } else {
     machine.clickRelay();
   }
+
+  DEBUG_PRINTF("SETTING BREW TO DRIPPING\n");
 
   state = DRIPPING;
   brewEndTime = millis();

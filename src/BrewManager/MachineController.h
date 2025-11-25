@@ -20,6 +20,7 @@ public:
   // input queries
   bool isManualStart() const { return manualBtn.fellEdge; }
   bool isOneCupStart() const { return oneCupBtn.fellEdge; }
+  bool isTwoCupStart() const { return twoCupBtn.fellEdge; }
 
   bool isStopPressed() const {
     return manualBtn.fellEdge || oneCupBtn.fellEdge || twoCupBtn.fellEdge;
@@ -68,7 +69,8 @@ private:
   // start macro state
   bool macroRunning = false;
   bool macroFinished = false;
-  uint32_t macroStepTime = 0;
+  uint8_t macroStep = 0;
+  uint32_t macroNextActionTime = 0;
 
   // stop macro state
   bool stopSequenceRunning = false;

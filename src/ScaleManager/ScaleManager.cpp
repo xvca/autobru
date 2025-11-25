@@ -74,6 +74,19 @@ void ScaleManager::notifyCallback(
 
   instance->lastPacketTime.store(now);
 
+  if (instance->tarePending) {
+    bool isTimeout = (now - instance->tareRequestTime > 1500);
+    bool isZeroed = (abs(sData.weightGrams) < 2.0f);
+
+    if (isZeroed || isTimeout) {
+      instance->tarePending = false;
+    } else {
+      DEBUG_PRINTF("Ignoring old weight: %.2f while taring...\n",
+                   sData.weightGrams);
+      return;
+    }
+  }
+
   float smoothedFlowRate;
 
   {
@@ -262,9 +275,12 @@ float ScaleManager::calculateLinearRegressionFlow() {
 }
 
 void ScaleManager::resetFlowBuffer() {
-  std::lock_guard<std::mutex> lock(scaleMutex);
   bufHead = 0;
   bufCount = 0;
+
+  const FlowPoint ZERO_POINT = {};
+
+  std::fill(flowBuffer, flowBuffer + FLOW_WINDOW_SIZE, ZERO_POINT);
 }
 
 void ScaleManager::begin() {
@@ -340,6 +356,7 @@ bool ScaleManager::tare() {
   if (commandChar == nullptr)
     return false;
   if (commandChar->writeValue(TARE)) {
+    setUpPendingTare();
     return true;
   } else {
     return false;
@@ -381,7 +398,7 @@ bool ScaleManager::startAndTare() {
   if (commandChar == nullptr)
     return false;
   if (commandChar->writeValue(START_AND_TARE)) {
-    resetFlowBuffer();
+    setUpPendingTare();
     return true;
   } else {
     return false;
@@ -412,4 +429,15 @@ void ScaleManager::cleanUpConnectionState() {
   if (bManager && bManager->isActive()) {
     shouldScan = true;
   }
+}
+
+void ScaleManager::setUpPendingTare() {
+  std::lock_guard<std::mutex> lock(scaleMutex);
+
+  resetFlowBuffer();
+
+  latestWeight.store(0.0f);
+
+  tarePending = true;
+  tareRequestTime = millis();
 }

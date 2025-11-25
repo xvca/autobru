@@ -77,7 +77,7 @@ private:
 
   static constexpr int SCAN_TIME_MS = 5000;
   static constexpr int NOTIFICATION_INTERVAL = 20;
-  static constexpr int CONNECTION_TIMEOUT_MS = 3000;
+  static constexpr int CONNECTION_TIMEOUT_MS = 2000;
 
   static ScaleManager *instance;
 
@@ -90,13 +90,15 @@ private:
 
   // flow tracking
   // number of samples to hold in our flow history
-  static const size_t FLOW_WINDOW_SIZE = 6;
-  FlowPoint flowBuffer[FLOW_WINDOW_SIZE];
+  static const size_t FLOW_WINDOW_SIZE = 20;
+  FlowPoint flowBuffer[FLOW_WINDOW_SIZE] = {};
   size_t bufHead = 0;
   size_t bufCount = 0;
 
   void resetFlowBuffer();
   float calculateLinearRegressionFlow();
+
+  void setUpPendingTare();
 
   bool connectToServer();
 
@@ -120,6 +122,9 @@ private:
   std::atomic<bool> shouldScan{false};
   std::atomic<bool> shouldConnect{false};
   std::atomic<bool> connected{false};
+
+  std::atomic<bool> tarePending{false};
+  std::atomic<uint32_t> tareRequestTime{0};
 
   BrewManager *bManager;
 
