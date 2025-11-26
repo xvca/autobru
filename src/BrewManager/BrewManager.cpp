@@ -41,7 +41,7 @@ void BrewManager::saveSettings() {
                          recentShotsProfile1[i].stopWeight);
   }
 
-  globalShotCounter = preferences.getUInt("shotCtr", 1);
+  preferences.putUInt("shotCtr", globalShotCounter);
 
   preferences.end();
 }
@@ -87,7 +87,7 @@ void BrewManager::loadSettings() {
         preferences.getFloat((key + "s").c_str(), 0);
   }
 
-  preferences.putUInt("shotCtr", globalShotCounter);
+  globalShotCounter = preferences.getUInt("shotCtr", 1);
 
   preferences.end();
 }
