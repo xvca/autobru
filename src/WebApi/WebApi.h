@@ -9,6 +9,7 @@ struct BrewMetrics {
   float targetWeight;
   ulong time;
   BrewState state;
+  bool isActive;
 } __attribute__((packed));
 
 class WebAPI {
@@ -29,7 +30,7 @@ private:
   ulong lastWebSocketUpdate = 0;
   ulong lastWiFiCheck = 0;
 
-  static constexpr ushort MAX_WS_CLIENTS = 2;
+  static constexpr ushort MAX_WS_CLIENTS = 8;
   static constexpr ulong WIFI_CHECK_INTERVAL = 10 * 1000;
 
   void checkWiFiConnection();

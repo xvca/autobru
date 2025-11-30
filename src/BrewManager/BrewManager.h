@@ -87,7 +87,7 @@ private:
   // constants
   static const uint ACTIVITY_TIMEOUT = 10 * 60 * 1000;
   static const uint MAX_SHOT_DURATION = 60 * 1000;
-  static constexpr float LEARNING_RATE = 0.2;
+  static constexpr float LEARNING_RATE = 0.5;
   static constexpr float MIN_FLOW_COMP = 0.2;
   static constexpr float MAX_FLOW_COMP = 2.5;
   static constexpr ulong DRIP_SETTLE_TIME = 10 * 1000;

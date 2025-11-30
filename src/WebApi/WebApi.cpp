@@ -439,15 +439,19 @@ void WebAPI::checkWiFiConnection() {
 }
 
 void WebAPI::broadcastBrewMetrics() {
-  if (!ws.count() || !sManager || !sManager->isConnected() || !bManager) {
+  if (!ws.count() || !sManager || !bManager) {
     return;
   }
 
-  BrewMetrics metrics = {.weight = sManager->getWeight(),
-                         .flowRate = sManager->getFlowRate(),
+  bool scaleReady = sManager->isConnected();
+
+  BrewMetrics metrics = {.weight = scaleReady ? sManager->getWeight() : 0.0f,
+                         .flowRate =
+                             scaleReady ? sManager->getFlowRate() : 0.0f,
                          .targetWeight = bManager->getTargetWeight(),
                          .time = sManager->getTime(),
-                         .state = bManager->getState()};
+                         .state = bManager->getState(),
+                         .isActive = bManager->isActive()};
 
   for (AsyncWebSocketClient &c : ws.getClients()) {
     if (c.canSend() && c.queueLen() < 5) {
