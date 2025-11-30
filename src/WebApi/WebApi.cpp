@@ -449,9 +449,10 @@ void WebAPI::broadcastBrewMetrics() {
                          .flowRate =
                              scaleReady ? sManager->getFlowRate() : 0.0f,
                          .targetWeight = bManager->getTargetWeight(),
-                         .time = sManager->getTime(),
+                         .time = scaleReady ? sManager->getTime() : 0,
                          .state = bManager->getState(),
-                         .isActive = bManager->isActive()};
+                         .isActive = bManager->isActive(),
+                         .isScaleConnected = scaleReady};
 
   for (AsyncWebSocketClient &c : ws.getClients()) {
     if (c.canSend() && c.queueLen() < 5) {
