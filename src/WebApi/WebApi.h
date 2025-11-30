@@ -8,7 +8,7 @@ struct BrewMetrics {
   float flowRate;
   float targetWeight;
   ulong time;
-  BrewState state;
+  uint8_t state;
   bool isActive;         // tells frontend whether we're actively scanning
   bool isScaleConnected; // tells fe whether we're connected
 } __attribute__((packed));

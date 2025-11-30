@@ -450,7 +450,7 @@ void WebAPI::broadcastBrewMetrics() {
                              scaleReady ? sManager->getFlowRate() : 0.0f,
                          .targetWeight = bManager->getTargetWeight(),
                          .time = scaleReady ? sManager->getTime() : 0,
-                         .state = bManager->getState(),
+                         .state = (uint8_t)bManager->getState(),
                          .isActive = bManager->isActive(),
                          .isScaleConnected = scaleReady};
 
