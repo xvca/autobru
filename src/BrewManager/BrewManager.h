@@ -8,7 +8,7 @@
 
 class ScaleManager;
 
-static constexpr int MAX_STORED_SHOTS = 12;
+static constexpr int ABSOLUTE_MAX_HISTORY = 20;
 /**
  * From personal experience using a spouted portafilter, flow comp would reach
  * equilibrium at around 1.3
@@ -31,12 +31,14 @@ enum BrewState { IDLE, PREINFUSION, BREWING, DRIPPING };
 enum PreinfusionMode { SIMPLE, WEIGHT_TRIGGERED };
 
 struct BrewPrefs {
-  bool isEnabled;
-  float regularPreset;
-  float decafPreset;
-  PreinfusionMode pMode;
-  String timezone;
-  int decafStartHour;
+  bool isEnabled = true;
+  float regularPreset = 40.0f;
+  float decafPreset = 40.0f;
+  PreinfusionMode pMode = SIMPLE;
+  String timezone = "GMT0";
+  int decafStartHour = -1;
+  float learningRate = 0.5f;
+  uint8_t historyLength = 5;
 };
 
 struct Shot {
@@ -60,15 +62,15 @@ private:
   ScaleManager *sManager;
   Preferences preferences;
 
+  BrewPrefs prefs;
+
   // state
-  bool enabled = true;
   bool active = false;
   bool waitingForMacro = false;
 
   uint32_t globalShotCounter = 0;
 
   BrewState state = IDLE;
-  PreinfusionMode pMode;
 
   // brew data
   float targetWeight;
@@ -87,7 +89,8 @@ private:
   // constants
   static const uint ACTIVITY_TIMEOUT = 10 * 60 * 1000;
   static const uint MAX_SHOT_DURATION = 60 * 1000;
-  static constexpr float LEARNING_RATE = 0.5;
+  static constexpr float DEFAULT_LEARNING_RATE = 0.5;
+  static constexpr uint8_t DEFAULT_HISTORY_LENGTH = 5;
   static constexpr float MIN_FLOW_COMP = 0.2;
   static constexpr float MAX_FLOW_COMP = 2.5;
   static constexpr ulong DRIP_SETTLE_TIME = 10 * 1000;
@@ -95,16 +98,9 @@ private:
   // threshold to decide between profile 0 (split shots) and profile 1 (full)
   static constexpr float PROFILE_THRESHOLD_WEIGHT = 28.0f;
 
-  // settings
-  float regularPreset;
-  float decafPreset;
-
-  String timezone = "GMT0";
-  int decafStartHour = -1;
-
   // seperate history for each profile to prevent learning pollution
-  Shot recentShotsProfile0[MAX_STORED_SHOTS];
-  Shot recentShotsProfile1[MAX_STORED_SHOTS];
+  Shot recentShotsProfile0[ABSOLUTE_MAX_HISTORY];
+  Shot recentShotsProfile1[ABSOLUTE_MAX_HISTORY];
 
   float flowCompFactors[2];
   int currentProfileIndex = 1;
@@ -150,7 +146,7 @@ public:
   void wake();
   bool isActive() { return active; }
   bool isBrewing() const { return state != IDLE; }
-  bool isEnabled() const { return enabled; }
+  bool isEnabled() const { return prefs.isEnabled; }
   BrewState getState() const { return state; }
   float getTargetWeight() const { return targetWeight; }
   ulong getBrewTime();

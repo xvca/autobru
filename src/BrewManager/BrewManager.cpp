@@ -10,11 +10,20 @@ void BrewManager::begin() {
 void BrewManager::saveSettings() {
   preferences.begin("brewsettings", false); // read-write
 
+  preferences.putBool("enabled", prefs.isEnabled);
+  preferences.putFloat("reg", prefs.regularPreset);
+  preferences.putFloat("dec", prefs.decafPreset);
+  preferences.putInt("decHr", prefs.decafStartHour);
+  preferences.putString("tz", prefs.timezone);
+  preferences.putInt("pmode", (int)prefs.pMode);
+  preferences.putFloat("lr", prefs.learningRate);
+  preferences.putUChar("hist", prefs.historyLength);
+
   preferences.putFloat("fact0", flowCompFactors[0]);
   preferences.putFloat("fact1", flowCompFactors[1]);
 
   // save history for profile 0;
-  for (int i = 0; i < MAX_STORED_SHOTS; i++) {
+  for (int i = 0; i < ABSOLUTE_MAX_HISTORY; i++) {
     String key = "p0_" + String(i);
     preferences.putUInt((key + "i").c_str(), recentShotsProfile0[i].id);
     preferences.putFloat((key + "t").c_str(),
@@ -28,7 +37,7 @@ void BrewManager::saveSettings() {
   }
 
   // save history for profile 1;
-  for (int i = 0; i < MAX_STORED_SHOTS; i++) {
+  for (int i = 0; i < ABSOLUTE_MAX_HISTORY; i++) {
     String key = "p1_" + String(i);
     preferences.putUInt((key + "i").c_str(), recentShotsProfile1[i].id);
     preferences.putFloat((key + "t").c_str(),
@@ -49,18 +58,24 @@ void BrewManager::saveSettings() {
 void BrewManager::loadSettings() {
   preferences.begin("brewsettings", true); // read-only
 
-  enabled = preferences.getBool("enabled", true);
-  regularPreset = preferences.getFloat("reg", 40.0f);
-  timezone = preferences.getString("tz", "GMT0");
-  decafPreset = preferences.getFloat("dec", 40.0f);
-  decafStartHour = preferences.getInt("decHr", -1);
-  pMode = PreinfusionMode(preferences.getInt("pmode", 0));
+  prefs.isEnabled = preferences.getBool("enabled", true);
+  prefs.regularPreset = preferences.getFloat("reg", 40.0f);
+  prefs.timezone = preferences.getString("tz", "GMT0");
+  prefs.decafPreset = preferences.getFloat("dec", 40.0f);
+  prefs.decafStartHour = preferences.getInt("decHr", -1);
+  prefs.pMode = PreinfusionMode(preferences.getInt("pmode", 0));
+
+  float lr = preferences.getFloat("lr", DEFAULT_LEARNING_RATE);
+  prefs.learningRate = constrain(lr, 0.1f, 1.0f);
+
+  int hl = preferences.getUChar("hist", DEFAULT_HISTORY_LENGTH);
+  prefs.historyLength = constrain(hl, 1, ABSOLUTE_MAX_HISTORY);
 
   flowCompFactors[0] = preferences.getFloat("fact0", DEFAULT_FLOW_COMP);
   flowCompFactors[1] = preferences.getFloat("fact1", DEFAULT_FLOW_COMP);
 
   // load profile 0
-  for (int i = 0; i < MAX_STORED_SHOTS; i++) {
+  for (int i = 0; i < ABSOLUTE_MAX_HISTORY; i++) {
     String key = "p0_" + String(i);
     recentShotsProfile0[i].id = preferences.getUInt((key + "i").c_str(), 0);
     recentShotsProfile0[i].targetWeight =
@@ -74,7 +89,7 @@ void BrewManager::loadSettings() {
   }
 
   // load profile 1
-  for (int i = 0; i < MAX_STORED_SHOTS; i++) {
+  for (int i = 0; i < ABSOLUTE_MAX_HISTORY; i++) {
     String key = "p1_" + String(i);
     recentShotsProfile1[i].id = preferences.getUInt((key + "i").c_str(), 0);
     recentShotsProfile1[i].targetWeight =
@@ -92,37 +107,24 @@ void BrewManager::loadSettings() {
   preferences.end();
 }
 
-void BrewManager::setPrefs(BrewPrefs prefs) {
-  enabled = prefs.isEnabled;
-  pMode = prefs.pMode;
-  regularPreset = prefs.regularPreset;
-  decafPreset = prefs.decafPreset;
-  timezone = prefs.timezone;
-  decafStartHour = prefs.decafStartHour;
+void BrewManager::setPrefs(BrewPrefs newPrefs) {
+  prefs = newPrefs;
 
-  preferences.begin("brewsettings", false);
+  prefs.learningRate = constrain(prefs.learningRate, 0.1f, 1.0f);
+  prefs.historyLength = constrain(prefs.historyLength, 1, ABSOLUTE_MAX_HISTORY);
 
-  preferences.putBool("enabled", enabled);
-  preferences.putFloat("reg", regularPreset);
-  preferences.putFloat("dec", decafPreset);
-  preferences.putInt("decHr", decafStartHour);
-  preferences.putString("tz", timezone);
-  preferences.putInt("pmode", pMode);
+  saveSettings();
 
-  preferences.end();
+  syncTimezone();
 }
 
-BrewPrefs BrewManager::getPrefs() {
-  BrewPrefs prefs = {enabled, regularPreset, decafPreset,
-                     pMode,   timezone,      decafStartHour};
-  return prefs;
-}
+BrewPrefs BrewManager::getPrefs() { return prefs; }
 
 void BrewManager::clearShotData() {
   flowCompFactors[0] = DEFAULT_FLOW_COMP;
   flowCompFactors[1] = DEFAULT_FLOW_COMP;
 
-  for (int i = 0; i < MAX_STORED_SHOTS; i++) {
+  for (int i = 0; i < ABSOLUTE_MAX_HISTORY; i++) {
     recentShotsProfile0[i] = {0, 0, 0, 0};
     recentShotsProfile1[i] = {0, 0, 0, 0};
   }
@@ -131,12 +133,12 @@ void BrewManager::clearShotData() {
 
 bool BrewManager::deleteShotById(uint32_t id) {
   auto deleteFromList = [&](Shot *list, int profileIdx) -> bool {
-    for (int i = 0; i < MAX_STORED_SHOTS; i++) {
+    for (int i = 0; i < ABSOLUTE_MAX_HISTORY; i++) {
       if (list[i].id == id) {
-        for (int j = i; j < MAX_STORED_SHOTS - 1; j++) {
+        for (int j = i; j < ABSOLUTE_MAX_HISTORY - 1; j++) {
           list[j] = list[j + 1];
         }
-        list[MAX_STORED_SHOTS - 1] = {0, 0, 0, 0, 0};
+        list[ABSOLUTE_MAX_HISTORY - 1] = {0, 0, 0, 0, 0};
 
         computeCompFactorFromScratch(profileIdx);
         return true;
@@ -159,16 +161,15 @@ bool BrewManager::deleteShotById(uint32_t id) {
 }
 
 void BrewManager::finalizeBrew() {
+  globalShotCounter++;
+
+  float error = (currentWeight - targetWeight) / targetWeight;
+
   /*
    * in these cases we assume the user has accidentally raised the cup before
    * end of brew or accidentally touched the scale and thus we can exclude it
    * from flow comp calculation and shot history
    */
-
-  globalShotCounter++;
-
-  float error = (currentWeight - targetWeight) / targetWeight;
-
   if (abs(error) > 0.15)
     return;
 
@@ -176,7 +177,7 @@ void BrewManager::finalizeBrew() {
       (currentProfileIndex == 0) ? recentShotsProfile0 : recentShotsProfile1;
 
   // shift the recent shot array and discard least recent
-  for (int i = MAX_STORED_SHOTS - 1; i > 0; i--) {
+  for (int i = ABSOLUTE_MAX_HISTORY - 1; i > 0; i--) {
     if (recentShots[i - 1].targetWeight != 0) {
       recentShots[i] = recentShots[i - 1];
     }
@@ -204,7 +205,9 @@ void BrewManager::computeCompFactor() {
   float totalWeightedTime = 0;
   float totalWeight = 0;
 
-  for (int i = 0; i < MAX_STORED_SHOTS; i++) {
+  int loopLimit = min((int)prefs.historyLength, (int)ABSOLUTE_MAX_HISTORY);
+
+  for (int i = 0; i < loopLimit; i++) {
     if (recentShots[i].targetWeight <= 0)
       continue;
     shotCount++;
@@ -227,8 +230,8 @@ void BrewManager::computeCompFactor() {
 
     float &factor = flowCompFactors[currentProfileIndex];
 
-    factor =
-        (1.0f - LEARNING_RATE) * factor + LEARNING_RATE * calculatedNewFactor;
+    factor = (1.0f - prefs.learningRate) * factor +
+             prefs.learningRate * calculatedNewFactor;
     factor = constrain(factor, MIN_FLOW_COMP, MAX_FLOW_COMP);
   } else {
     flowCompFactors[currentProfileIndex] = DEFAULT_FLOW_COMP;
@@ -251,7 +254,7 @@ unsigned long BrewManager::getBrewTime() {
 }
 
 void BrewManager::wake() {
-  if (!enabled) {
+  if (!prefs.isEnabled) {
     return;
   }
 
@@ -264,7 +267,7 @@ void BrewManager::wake() {
 }
 
 void BrewManager::update() {
-  if (!enabled)
+  if (!prefs.isEnabled)
     return;
 
   // DEBUG_PRINTF("entering update, state = %d\n", state);
@@ -305,16 +308,17 @@ void BrewManager::handleIdleState() {
       // triggers a brew using the one cup button which doesn't support
       // arbitrary length preinfusion on hold so we can take the regular/decaf
       // preset and half it to get the target
-      float target = isDecafTime() ? decafPreset / 2 : regularPreset / 2;
+      float target =
+          isDecafTime() ? prefs.decafPreset / 2 : prefs.regularPreset / 2;
       startBrew(target, false);
     }
     return;
   }
 
-  float baseTarget = regularPreset;
+  float baseTarget = prefs.regularPreset;
 
   if (isDecafTime()) {
-    baseTarget = decafPreset;
+    baseTarget = prefs.decafPreset;
   }
 
   if (machine.isManualStart()) {
@@ -323,7 +327,7 @@ void BrewManager::handleIdleState() {
 
     float halfTarget = baseTarget / 2.0f;
 
-    if (pMode == WEIGHT_TRIGGERED) {
+    if (prefs.pMode == WEIGHT_TRIGGERED) {
       machine.startPreinfusionMacro();
       waitingForMacro = true;
     } else {
@@ -361,7 +365,7 @@ void BrewManager::handleActiveState() {
 
   // transition preinf -> brewing if in weight triggered mode we lrelease relay
   // to go full pressure once first drops are detected
-  if (state == PREINFUSION && pMode == WEIGHT_TRIGGERED &&
+  if (state == PREINFUSION && prefs.pMode == WEIGHT_TRIGGERED &&
       currentWeight >= 2.0f && brewTime > 2000) {
     machine.releaseRelay();
     state = BREWING;
@@ -386,7 +390,7 @@ void BrewManager::handleActiveState() {
 }
 
 bool BrewManager::startBrew(float target, bool shouldTriggerRelay) {
-  if (!enabled || !sManager->isConnected() || isBrewing())
+  if (!prefs.isEnabled || !sManager->isConnected() || isBrewing())
     return false;
 
   targetWeight = target;
@@ -402,9 +406,9 @@ bool BrewManager::startBrew(float target, bool shouldTriggerRelay) {
   sManager->startAndTare();
 
   if (!shouldTriggerRelay) {
-    state = (pMode == SIMPLE) ? BREWING : PREINFUSION;
+    state = (prefs.pMode == SIMPLE) ? BREWING : PREINFUSION;
   } else {
-    if (pMode == SIMPLE) {
+    if (prefs.pMode == SIMPLE) {
       machine.clickRelay();
       state = BREWING;
     } else {
@@ -424,7 +428,7 @@ bool BrewManager::abortBrew(bool shouldTriggerRelay) {
     return false;
 
   if (state == PREINFUSION) {
-    machine.releaseRelay();
+    machine.stopFromPreinfusion();
   }
 
   if (shouldTriggerRelay) {
@@ -442,7 +446,7 @@ bool BrewManager::finishBrew() {
     return false;
 
   // software stop here, use relay to stop the brew
-  if (state == PREINFUSION && pMode == WEIGHT_TRIGGERED) {
+  if (state == PREINFUSION && prefs.pMode == WEIGHT_TRIGGERED) {
     machine.stopFromPreinfusion();
   } else {
     machine.clickRelay();
@@ -472,7 +476,7 @@ float BrewManager::getFlowCompFactor(int profileIndex) {
 }
 
 bool BrewManager::isDecafTime() {
-  if (decafStartHour < 0)
+  if (prefs.decafStartHour < 0)
     return false;
 
   struct tm timeinfo;
@@ -480,10 +484,10 @@ bool BrewManager::isDecafTime() {
     return false;
   }
 
-  return (timeinfo.tm_hour >= decafStartHour);
+  return (timeinfo.tm_hour >= prefs.decafStartHour);
 }
 
 void BrewManager::syncTimezone() {
-  setenv("TZ", timezone.c_str(), 1);
+  setenv("TZ", prefs.timezone.c_str(), 1);
   tzset();
 }

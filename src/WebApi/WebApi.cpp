@@ -137,7 +137,7 @@ void WebAPI::setupRoutes() {
           return false;
         }
 
-        bManager->abortBrew();
+        bManager->abortBrew(true);
 
         AsyncWebServerResponse *response = request->beginResponse(
             200, "application/json", "{\"message\": \"Brew stopped\"}");
@@ -268,7 +268,9 @@ void WebAPI::setupRoutes() {
             !request->hasParam("decafPreset", true) ||
             !request->hasParam("pMode", true) ||
             !request->hasParam("decafStartHour", true) ||
-            !request->hasParam("timezone", true)) {
+            !request->hasParam("timezone", true) ||
+            !request->hasParam("learningRate", true) ||
+            !request->hasParam("historyLength", true)) {
           handleError(request, 400, "Missing required parameters");
           return;
         }
@@ -277,20 +279,29 @@ void WebAPI::setupRoutes() {
 
         prefs.isEnabled =
             request->getParam("isEnabled", true)->value().equals("true");
-
         prefs.regularPreset =
             request->getParam("regularPreset", true)->value().toFloat();
-
         prefs.decafPreset =
             request->getParam("decafPreset", true)->value().toFloat();
-
         prefs.pMode =
             PreinfusionMode(request->getParam("pMode", true)->value().toInt());
-
         prefs.decafStartHour =
             request->getParam("decafStartHour", true)->value().toInt();
-
         prefs.timezone = request->getParam("timezone", true)->value();
+        prefs.learningRate =
+            request->getParam("learningRate", true)->value().toFloat();
+        prefs.historyLength =
+            request->getParam("historyLength", true)->value().toInt();
+
+        if (prefs.learningRate < 0.1 || prefs.learningRate > 1.0) {
+          handleError(request, 400, "Learning Rate must be 0.1 - 1.0");
+          return;
+        }
+
+        if (prefs.historyLength < 1 || prefs.historyLength > 20) {
+          handleError(request, 400, "History Length must be 1 - 20");
+          return;
+        }
 
         bManager->setPrefs(prefs);
 
@@ -319,6 +330,8 @@ void WebAPI::setupRoutes() {
               response += ",\"pMode\":" + String(prefs.pMode);
               response += ",\"decafStartHour\":" + String(prefs.decafStartHour);
               response += ",\"timezone\":\"" + prefs.timezone + "\"";
+              response += ",\"learningRate\":" + String(prefs.learningRate);
+              response += ",\"historyLength\":" + String(prefs.historyLength);
               response += "}";
 
               AsyncWebServerResponse *resp =
@@ -343,7 +356,7 @@ void WebAPI::setupRoutes() {
         String response = "{";
 
         response += "\"p0\":{\"factor\":" + String(factor0) + ",\"shots\":[";
-        for (int i = 0; i < MAX_STORED_SHOTS; i++) {
+        for (int i = 0; i < ABSOLUTE_MAX_HISTORY; i++) {
           if (shots0[i].id == 0)
             continue;
 
@@ -359,7 +372,7 @@ void WebAPI::setupRoutes() {
         response += "]},";
 
         response += "\"p1\":{\"factor\":" + String(factor1) + ",\"shots\":[";
-        for (int i = 0; i < MAX_STORED_SHOTS; i++) {
+        for (int i = 0; i < ABSOLUTE_MAX_HISTORY; i++) {
           if (shots1[i].id == 0)
             continue;
 
