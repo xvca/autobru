@@ -252,13 +252,25 @@ float ScaleManager::calculateLinearRegressionFlow() {
   size_t oldestIndex =
       (bufHead + FLOW_WINDOW_SIZE - bufCount) % FLOW_WINDOW_SIZE;
 
-  float timeOffset = flowBuffer[oldestIndex].timeSecs;
+  float oldestTimestamp = flowBuffer[oldestIndex].timeSecs;
+
+  size_t newestIndex = (bufHead + FLOW_WINDOW_SIZE - 1) % FLOW_WINDOW_SIZE;
+  // if newest index timestamp is smaller than oldest
+  if (flowBuffer[newestIndex].timeSecs < oldestTimestamp) {
+    // buffer is invalid
+    return 0.0f;
+  }
 
   for (size_t i = 0; i < bufCount; i++) {
     size_t idx = (oldestIndex + i) % FLOW_WINDOW_SIZE;
 
-    float x = flowBuffer[idx].timeSecs - timeOffset;
+    float x = flowBuffer[idx].timeSecs - oldestTimestamp;
     float y = flowBuffer[idx].weight;
+
+    // if time delta < 0 something is wrong...
+    if (x < 0) {
+      return 0.0f;
+    }
 
     sumX += x;
     sumY += y;
@@ -271,7 +283,16 @@ float ScaleManager::calculateLinearRegressionFlow() {
   if (denom == 0)
     return 0.0f;
 
-  return ((bufCount * sumXY) - (sumX * sumY)) / denom;
+  float slope = ((bufCount * sumXY) - (sumX * sumY)) / denom;
+
+  // clamp to reasonable flow rate just in case
+  if (slope < 0.0f)
+    slope = 0.0f;
+  // my bdb max flow is approx. 8g/s so 10g/s as a max is reasonable
+  if (slope > 10.0f)
+    slope = 10.0f;
+
+  return slope;
 }
 
 void ScaleManager::resetFlowBuffer() {
