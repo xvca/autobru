@@ -1,6 +1,6 @@
 # Autobru
 
-This is the firmware/hardware side of the project. It's an ESP32-based controller that bridges a **Breville Dual Boiler** and a **Bookoo Bluetooth scale** to enable gravimetric dosing (brew-by-weight).
+Autobru is a DIY project I've been working on to add brew-by-weight functionality to my Breville Dual Boiler, compatible with Bookoo scales.
 
 While this runs the machine, you might want the [Bru Web Interface](https://github.com/xvca/bru) to easily set your target weight, visualize shots, and track your history.
 
@@ -8,8 +8,8 @@ While this runs the machine, you might want the [Bru Web Interface](https://gith
 
 *   **Connects to the Scale:** Automatically scans for and connects to Bookoo Bluetooth scales.
 *   **Controls the Machine:** Intercepts the brew button signals to start/stop shots electronically.
-*   **Smart Stop:** It uses a learning algorithm that attempts to learn from your previous shots. It calculates when to cut the pump so the final drips land on your target weight. This means you can switch between spouted and bottomless portafilters and autobru will adapt to whichever you're using over the course of a few shots.
-*   **Weight-Triggered Pre-infusion:** Instead of a fixed time, it can hold the machine in low-pressure pre-infusion until the first drops actually hit the cup (detected by the scale), then ramp up to full pressure.
+*   **Adaptive Stop:** Uses a learning algorithm that attempts to learn from your previous shots. It calculates when to cut the pump so the final drips land on your target weight. This means you can switch between spouted and bottomless portafilters and autobru will adapt to whichever you're using over the course of a few shots.
+*   **Weight-Triggered Pre-infusion (Optional):** Instead of a fixed time, it can hold the machine in low-pressure pre-infusion until the first drops actually hit the cup (detected by the scale), then ramp up to full pressure.
 *   **API & WebSocket:** Exposes a REST API and real-time WebSocket stream for weight/flow data.
 
 ## Hardware & DIY Guide
