@@ -14,8 +14,10 @@ While this runs the machine, you might want the [Bru Web Interface](https://gith
 
 ## Hardware & DIY Guide
 
+<p align='center'>
 <img src="https://github.com/user-attachments/assets/6b753872-b7ba-4e36-aa85-fffcd82899c3" alt="pcb" width="250"/>
 <img src="https://github.com/user-attachments/assets/7e20d250-a7f0-4608-a933-aaea8918ad65" alt="pcb in machine" width="270"/>
+</p>
 
 This project is meant to be DIY-friendly. The PCB sits inside the white plastic box behind the screen, intercepting the connection between the button panel and the mainboard. It draws 12V from the machine and converts it to 5V for the ESP32.
 
