@@ -107,7 +107,6 @@ private:
 
   // helpers
   void computeCompFactor();
-  void computeCompFactorFromScratch(int profileIdx);
   void loadSettings();
   void saveSettings();
   void finalizeBrew();
@@ -152,8 +151,6 @@ public:
   ulong getBrewTime();
 
   void clearShotData();
-  bool deleteShotById(uint32_t id);
-  void recalculateCompFactor();
 
   BrewPrefs getPrefs();
   void setPrefs(BrewPrefs prefs);

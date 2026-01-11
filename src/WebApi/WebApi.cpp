@@ -172,67 +172,6 @@ void WebAPI::setupRoutes() {
         return true;
       });
 
-  server.on(
-      "/clear-shot", HTTP_POST,
-      [this, &handleError](AsyncWebServerRequest *request) {
-        if (!bManager) {
-          handleError(request, 500, "Brew manager not initialized");
-          return;
-        }
-
-        if (!request->hasParam("id", true)) {
-          handleError(request, 400, "Missing 'id' parameter");
-          return;
-        }
-
-        String idStr = request->getParam("id", true)->value();
-        long idVal = idStr.toInt();
-
-        if (idVal <= 0) {
-          handleError(request, 400, "Invalid Shot ID");
-          return;
-        }
-
-        bool success = bManager->deleteShotById((uint32_t)idVal);
-
-        if (success) {
-          AsyncWebServerResponse *response = request->beginResponse(
-              200, "application/json",
-              "{\"success\": true, \"message\": \"Shot deleted\", \"id\": " +
-                  idStr + "}");
-          response->addHeader("Access-Control-Allow-Origin", "*");
-          request->send(response);
-        } else {
-          handleError(request, 404, "Shot ID not found");
-        }
-      });
-
-  server.on("/recalc-comp-factor", HTTP_POST,
-            [this, &handleError](AsyncWebServerRequest *request) {
-              if (!bManager) {
-                handleError(request, 400, "Brew manager not initialized");
-                return false;
-              }
-
-              if (!bManager->isEnabled()) {
-                handleError(request, 400,
-                            "Brew control is currently disabled. Please "
-                            "enable in settings");
-                return false;
-              }
-
-              bManager->recalculateCompFactor();
-
-              AsyncWebServerResponse *response = request->beginResponse(
-                  200, "application/json",
-                  "{\"message\": \"new flow comp factor\", \"\": " +
-                      String(bManager->getFlowCompFactor(1)) + "}");
-              response->addHeader("Access-Control-Allow-Origin", "*");
-              request->send(response);
-
-              return true;
-            });
-
   server.on("/wake", HTTP_POST,
             [this, &handleError](AsyncWebServerRequest *request) {
               if (!bManager->isEnabled()) {

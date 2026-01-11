@@ -8,7 +8,9 @@ void BrewManager::begin() {
 }
 
 void BrewManager::saveSettings() {
-  preferences.begin("brewsettings", false); // read-write
+  if (!preferences.begin("brewsettings", false)) {
+    return;
+  }
 
   preferences.putBool("enabled", prefs.isEnabled);
   preferences.putFloat("reg", prefs.regularPreset);
@@ -21,36 +23,12 @@ void BrewManager::saveSettings() {
 
   preferences.putFloat("fact0", flowCompFactors[0]);
   preferences.putFloat("fact1", flowCompFactors[1]);
-
-  // save history for profile 0;
-  for (int i = 0; i < ABSOLUTE_MAX_HISTORY; i++) {
-    String key = "p0_" + String(i);
-    preferences.putUInt((key + "i").c_str(), recentShotsProfile0[i].id);
-    preferences.putFloat((key + "t").c_str(),
-                         recentShotsProfile0[i].targetWeight);
-    preferences.putFloat((key + "f").c_str(),
-                         recentShotsProfile0[i].finalWeight);
-    preferences.putFloat((key + "r").c_str(),
-                         recentShotsProfile0[i].lastFlowRate);
-    preferences.putFloat((key + "s").c_str(),
-                         recentShotsProfile0[i].stopWeight);
-  }
-
-  // save history for profile 1;
-  for (int i = 0; i < ABSOLUTE_MAX_HISTORY; i++) {
-    String key = "p1_" + String(i);
-    preferences.putUInt((key + "i").c_str(), recentShotsProfile1[i].id);
-    preferences.putFloat((key + "t").c_str(),
-                         recentShotsProfile1[i].targetWeight);
-    preferences.putFloat((key + "f").c_str(),
-                         recentShotsProfile1[i].finalWeight);
-    preferences.putFloat((key + "r").c_str(),
-                         recentShotsProfile1[i].lastFlowRate);
-    preferences.putFloat((key + "s").c_str(),
-                         recentShotsProfile1[i].stopWeight);
-  }
-
   preferences.putUInt("shotCtr", globalShotCounter);
+
+  preferences.putBytes("histP0", recentShotsProfile0,
+                       sizeof(recentShotsProfile0));
+  preferences.putBytes("histP1", recentShotsProfile1,
+                       sizeof(recentShotsProfile1));
 
   preferences.end();
 }
@@ -74,35 +52,21 @@ void BrewManager::loadSettings() {
   flowCompFactors[0] = preferences.getFloat("fact0", DEFAULT_FLOW_COMP);
   flowCompFactors[1] = preferences.getFloat("fact1", DEFAULT_FLOW_COMP);
 
-  // load profile 0
-  for (int i = 0; i < ABSOLUTE_MAX_HISTORY; i++) {
-    String key = "p0_" + String(i);
-    recentShotsProfile0[i].id = preferences.getUInt((key + "i").c_str(), 0);
-    recentShotsProfile0[i].targetWeight =
-        preferences.getFloat((key + "t").c_str(), 0);
-    recentShotsProfile0[i].finalWeight =
-        preferences.getFloat((key + "f").c_str(), 0);
-    recentShotsProfile0[i].lastFlowRate =
-        preferences.getFloat((key + "r").c_str(), 0);
-    recentShotsProfile0[i].stopWeight =
-        preferences.getFloat((key + "s").c_str(), 0);
-  }
-
-  // load profile 1
-  for (int i = 0; i < ABSOLUTE_MAX_HISTORY; i++) {
-    String key = "p1_" + String(i);
-    recentShotsProfile1[i].id = preferences.getUInt((key + "i").c_str(), 0);
-    recentShotsProfile1[i].targetWeight =
-        preferences.getFloat((key + "t").c_str(), 0);
-    recentShotsProfile1[i].finalWeight =
-        preferences.getFloat((key + "f").c_str(), 0);
-    recentShotsProfile1[i].lastFlowRate =
-        preferences.getFloat((key + "r").c_str(), 0);
-    recentShotsProfile1[i].stopWeight =
-        preferences.getFloat((key + "s").c_str(), 0);
-  }
-
   globalShotCounter = preferences.getUInt("shotCtr", 1);
+
+  size_t expectedSize = sizeof(recentShotsProfile0);
+
+  if (preferences.getBytesLength("histP0") == expectedSize) {
+    preferences.getBytes("histP0", recentShotsProfile0, expectedSize);
+  } else {
+    memset(recentShotsProfile0, 0, expectedSize);
+  }
+
+  if (preferences.getBytesLength("histP1") == expectedSize) {
+    preferences.getBytes("histP1", recentShotsProfile1, expectedSize);
+  } else {
+    memset(recentShotsProfile1, 0, expectedSize);
+  }
 
   preferences.end();
 }
@@ -124,40 +88,10 @@ void BrewManager::clearShotData() {
   flowCompFactors[0] = DEFAULT_FLOW_COMP;
   flowCompFactors[1] = DEFAULT_FLOW_COMP;
 
-  for (int i = 0; i < ABSOLUTE_MAX_HISTORY; i++) {
-    recentShotsProfile0[i] = {0, 0, 0, 0};
-    recentShotsProfile1[i] = {0, 0, 0, 0};
-  }
+  memset(recentShotsProfile0, 0, sizeof(recentShotsProfile0));
+  memset(recentShotsProfile1, 0, sizeof(recentShotsProfile1));
+
   saveSettings();
-}
-
-bool BrewManager::deleteShotById(uint32_t id) {
-  auto deleteFromList = [&](Shot *list, int profileIdx) -> bool {
-    for (int i = 0; i < ABSOLUTE_MAX_HISTORY; i++) {
-      if (list[i].id == id) {
-        for (int j = i; j < ABSOLUTE_MAX_HISTORY - 1; j++) {
-          list[j] = list[j + 1];
-        }
-        list[ABSOLUTE_MAX_HISTORY - 1] = {0, 0, 0, 0, 0};
-
-        computeCompFactorFromScratch(profileIdx);
-        return true;
-      }
-    }
-    return false;
-  };
-
-  if (deleteFromList(recentShotsProfile0, 0)) {
-    saveSettings();
-    return true;
-  }
-
-  if (deleteFromList(recentShotsProfile1, 1)) {
-    saveSettings();
-    return true;
-  }
-
-  return false;
 }
 
 void BrewManager::finalizeBrew() {
@@ -176,11 +110,8 @@ void BrewManager::finalizeBrew() {
   Shot *recentShots =
       (currentProfileIndex == 0) ? recentShotsProfile0 : recentShotsProfile1;
 
-  // shift the recent shot array and discard least recent
   for (int i = ABSOLUTE_MAX_HISTORY - 1; i > 0; i--) {
-    if (recentShots[i - 1].targetWeight != 0) {
-      recentShots[i] = recentShots[i - 1];
-    }
+    recentShots[i] = recentShots[i - 1];
   }
 
   // Add newest shot at index 0
@@ -191,9 +122,7 @@ void BrewManager::finalizeBrew() {
                     .stopWeight = stopWeight};
 
   computeCompFactor();
-
   saveSettings();
-
   pendingBeeps = 3;
 }
 
@@ -236,15 +165,6 @@ void BrewManager::computeCompFactor() {
   } else {
     flowCompFactors[currentProfileIndex] = DEFAULT_FLOW_COMP;
   }
-}
-
-void BrewManager::computeCompFactorFromScratch(int profileIdx) {
-  computeCompFactor();
-}
-
-void BrewManager::recalculateCompFactor() {
-  computeCompFactorFromScratch(currentProfileIndex);
-  saveSettings();
 }
 
 unsigned long BrewManager::getBrewTime() {
