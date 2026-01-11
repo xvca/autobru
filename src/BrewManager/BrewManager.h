@@ -8,12 +8,7 @@
 
 class ScaleManager;
 
-static constexpr int ABSOLUTE_MAX_HISTORY = 20;
-/**
- * From personal experience using a spouted portafilter, flow comp would reach
- * equilibrium at around 1.3
- */
-static constexpr float DEFAULT_FLOW_COMP = 1.3;
+static constexpr int MAX_HISTORY = 20;
 
 /**
  * IDLE         -> Waiting for user input
@@ -38,7 +33,7 @@ struct BrewPrefs {
   String timezone = "GMT0";
   int decafStartHour = -1;
   float learningRate = 0.5f;
-  uint8_t historyLength = 5;
+  float systemLag = 0.2f;
 };
 
 struct Shot {
@@ -89,24 +84,26 @@ private:
   // constants
   static const uint ACTIVITY_TIMEOUT = 10 * 60 * 1000;
   static const uint MAX_SHOT_DURATION = 60 * 1000;
+
   static constexpr float DEFAULT_LEARNING_RATE = 0.5;
-  static constexpr uint8_t DEFAULT_HISTORY_LENGTH = 5;
-  static constexpr float MIN_FLOW_COMP = 0.2;
-  static constexpr float MAX_FLOW_COMP = 2.5;
+
+  static constexpr float MIN_BIAS = -5.0f;
+  static constexpr float MAX_BIAS = 5.0f;
+
   static constexpr ulong DRIP_SETTLE_TIME = 10 * 1000;
 
   // threshold to decide between profile 0 (split shots) and profile 1 (full)
   static constexpr float PROFILE_THRESHOLD_WEIGHT = 28.0f;
 
   // seperate history for each profile to prevent learning pollution
-  Shot recentShotsProfile0[ABSOLUTE_MAX_HISTORY];
-  Shot recentShotsProfile1[ABSOLUTE_MAX_HISTORY];
+  Shot recentShotsProfile0[MAX_HISTORY];
+  Shot recentShotsProfile1[MAX_HISTORY];
 
-  float flowCompFactors[2];
+  float flowCompBias[2];
   int currentProfileIndex = 1;
 
   // helpers
-  void computeCompFactor();
+  void updateFlowBias();
   void loadSettings();
   void saveSettings();
   void finalizeBrew();
@@ -156,7 +153,7 @@ public:
   void setPrefs(BrewPrefs prefs);
 
   Shot *getRecentShots(int profileIndex);
-  float getFlowCompFactor(int profileIndex);
+  float getFlowCompBias(int profileIndex);
 
   void syncTimezone();
 };

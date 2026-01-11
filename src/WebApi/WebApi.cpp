@@ -209,7 +209,7 @@ void WebAPI::setupRoutes() {
             !request->hasParam("decafStartHour", true) ||
             !request->hasParam("timezone", true) ||
             !request->hasParam("learningRate", true) ||
-            !request->hasParam("historyLength", true)) {
+            !request->hasParam("systemLag", true)) {
           handleError(request, 400, "Missing required parameters");
           return;
         }
@@ -229,16 +229,16 @@ void WebAPI::setupRoutes() {
         prefs.timezone = request->getParam("timezone", true)->value();
         prefs.learningRate =
             request->getParam("learningRate", true)->value().toFloat();
-        prefs.historyLength =
-            request->getParam("historyLength", true)->value().toInt();
+        prefs.systemLag =
+            request->getParam("systemLag", true)->value().toFloat();
 
-        if (prefs.learningRate < 0.1 || prefs.learningRate > 1.0) {
-          handleError(request, 400, "Learning Rate must be 0.1 - 1.0");
+        if (prefs.learningRate < 0.0f || prefs.learningRate > 1.0) {
+          handleError(request, 400, "Learning Rate must be 0 - 1");
           return;
         }
 
-        if (prefs.historyLength < 1 || prefs.historyLength > 20) {
-          handleError(request, 400, "History Length must be 1 - 20");
+        if (prefs.systemLag < 0.0f || prefs.systemLag > 1.0f) {
+          handleError(request, 400, "Lag must be 0 - 1");
           return;
         }
 
@@ -270,7 +270,7 @@ void WebAPI::setupRoutes() {
               response += ",\"decafStartHour\":" + String(prefs.decafStartHour);
               response += ",\"timezone\":\"" + prefs.timezone + "\"";
               response += ",\"learningRate\":" + String(prefs.learningRate);
-              response += ",\"historyLength\":" + String(prefs.historyLength);
+              response += ",\"systemLag\":" + String(prefs.systemLag);
               response += "}";
 
               AsyncWebServerResponse *resp =
@@ -289,13 +289,13 @@ void WebAPI::setupRoutes() {
         const Shot *shots0 = bManager->getRecentShots(0);
         const Shot *shots1 = bManager->getRecentShots(1);
 
-        float factor0 = bManager->getFlowCompFactor(0);
-        float factor1 = bManager->getFlowCompFactor(1);
+        float factor0 = bManager->getFlowCompBias(0);
+        float factor1 = bManager->getFlowCompBias(1);
 
         String response = "{";
 
-        response += "\"p0\":{\"factor\":" + String(factor0) + ",\"shots\":[";
-        for (int i = 0; i < ABSOLUTE_MAX_HISTORY; i++) {
+        response += "\"p0\":{\"bias\":" + String(factor0) + ",\"shots\":[";
+        for (int i = 0; i < MAX_HISTORY; i++) {
           if (shots0[i].id == 0)
             continue;
 
@@ -310,8 +310,8 @@ void WebAPI::setupRoutes() {
         }
         response += "]},";
 
-        response += "\"p1\":{\"factor\":" + String(factor1) + ",\"shots\":[";
-        for (int i = 0; i < ABSOLUTE_MAX_HISTORY; i++) {
+        response += "\"p1\":{\"bias\":" + String(factor1) + ",\"shots\":[";
+        for (int i = 0; i < MAX_HISTORY; i++) {
           if (shots1[i].id == 0)
             continue;
 

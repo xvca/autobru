@@ -19,10 +19,10 @@ void BrewManager::saveSettings() {
   preferences.putString("tz", prefs.timezone);
   preferences.putInt("pmode", (int)prefs.pMode);
   preferences.putFloat("lr", prefs.learningRate);
-  preferences.putUChar("hist", prefs.historyLength);
+  preferences.putFloat("lag", prefs.systemLag);
 
-  preferences.putFloat("fact0", flowCompFactors[0]);
-  preferences.putFloat("fact1", flowCompFactors[1]);
+  preferences.putFloat("bias0", flowCompBias[0]);
+  preferences.putFloat("bias1", flowCompBias[1]);
   preferences.putUInt("shotCtr", globalShotCounter);
 
   preferences.putBytes("histP0", recentShotsProfile0,
@@ -44,13 +44,13 @@ void BrewManager::loadSettings() {
   prefs.pMode = PreinfusionMode(preferences.getInt("pmode", 0));
 
   float lr = preferences.getFloat("lr", DEFAULT_LEARNING_RATE);
-  prefs.learningRate = constrain(lr, 0.1f, 1.0f);
+  prefs.learningRate = constrain(lr, 0.0f, 1.0f);
 
-  int hl = preferences.getUChar("hist", DEFAULT_HISTORY_LENGTH);
-  prefs.historyLength = constrain(hl, 1, ABSOLUTE_MAX_HISTORY);
+  float lag = preferences.getFloat("lag", 0.20f);
+  prefs.systemLag = constrain(lag, 0.0f, 1.0f);
 
-  flowCompFactors[0] = preferences.getFloat("fact0", DEFAULT_FLOW_COMP);
-  flowCompFactors[1] = preferences.getFloat("fact1", DEFAULT_FLOW_COMP);
+  flowCompBias[0] = preferences.getFloat("bias0", 1.0f);
+  flowCompBias[1] = preferences.getFloat("bias1", 2.0f);
 
   globalShotCounter = preferences.getUInt("shotCtr", 1);
 
@@ -74,8 +74,8 @@ void BrewManager::loadSettings() {
 void BrewManager::setPrefs(BrewPrefs newPrefs) {
   prefs = newPrefs;
 
-  prefs.learningRate = constrain(prefs.learningRate, 0.1f, 1.0f);
-  prefs.historyLength = constrain(prefs.historyLength, 1, ABSOLUTE_MAX_HISTORY);
+  prefs.learningRate = constrain(prefs.learningRate, 0.0f, 1.0f);
+  prefs.systemLag = constrain(prefs.systemLag, 0.0f, 1.0f);
 
   saveSettings();
 
@@ -85,8 +85,8 @@ void BrewManager::setPrefs(BrewPrefs newPrefs) {
 BrewPrefs BrewManager::getPrefs() { return prefs; }
 
 void BrewManager::clearShotData() {
-  flowCompFactors[0] = DEFAULT_FLOW_COMP;
-  flowCompFactors[1] = DEFAULT_FLOW_COMP;
+  flowCompBias[0] = 1.0f;
+  flowCompBias[1] = 2.0f;
 
   memset(recentShotsProfile0, 0, sizeof(recentShotsProfile0));
   memset(recentShotsProfile1, 0, sizeof(recentShotsProfile1));
@@ -110,7 +110,7 @@ void BrewManager::finalizeBrew() {
   Shot *recentShots =
       (currentProfileIndex == 0) ? recentShotsProfile0 : recentShotsProfile1;
 
-  for (int i = ABSOLUTE_MAX_HISTORY - 1; i > 0; i--) {
+  for (int i = MAX_HISTORY - 1; i > 0; i--) {
     recentShots[i] = recentShots[i - 1];
   }
 
@@ -121,50 +121,24 @@ void BrewManager::finalizeBrew() {
                     .lastFlowRate = lastFlowRate,
                     .stopWeight = stopWeight};
 
-  computeCompFactor();
+  updateFlowBias();
   saveSettings();
   pendingBeeps = 3;
 }
 
-void BrewManager::computeCompFactor() {
-  Shot *recentShots =
-      (currentProfileIndex == 0) ? recentShotsProfile0 : recentShotsProfile1;
+void BrewManager::updateFlowBias() {
+  float totalDrippage = currentWeight - stopWeight;
 
-  int shotCount = 0;
-  float totalWeightedTime = 0;
-  float totalWeight = 0;
+  float lagComponent = lastFlowRate * prefs.systemLag;
 
-  int loopLimit = min((int)prefs.historyLength, (int)ABSOLUTE_MAX_HISTORY);
+  float observedBias = totalDrippage - lagComponent;
 
-  for (int i = 0; i < loopLimit; i++) {
-    if (recentShots[i].targetWeight <= 0)
-      continue;
-    shotCount++;
+  float alpha = prefs.learningRate;
+  float &bias = flowCompBias[currentProfileIndex];
 
-    float drippage = recentShots[i].finalWeight - recentShots[i].stopWeight;
-    float flowRate = recentShots[i].lastFlowRate;
+  bias = (bias * (1.0f - alpha)) + (observedBias * alpha);
 
-    if (flowRate < 0.05 || drippage < 0)
-      continue;
-
-    float predictionTime = drippage / flowRate;
-    float weight = 1.0f / sqrt(i + 1);
-
-    totalWeightedTime += predictionTime * weight;
-    totalWeight += weight;
-  }
-
-  if (totalWeight > 0) {
-    float calculatedNewFactor = totalWeightedTime / totalWeight;
-
-    float &factor = flowCompFactors[currentProfileIndex];
-
-    factor = (1.0f - prefs.learningRate) * factor +
-             prefs.learningRate * calculatedNewFactor;
-    factor = constrain(factor, MIN_FLOW_COMP, MAX_FLOW_COMP);
-  } else {
-    flowCompFactors[currentProfileIndex] = DEFAULT_FLOW_COMP;
-  }
+  bias = constrain(bias, MIN_BIAS, MAX_BIAS);
 }
 
 unsigned long BrewManager::getBrewTime() {
@@ -293,11 +267,14 @@ void BrewManager::handleActiveState() {
 
   // transition brewing | preinf -> dripping
   if (state == BREWING || state == PREINFUSION) {
-    float activeFactor = flowCompFactors[currentProfileIndex];
+    float dynamicDrippage = flowRate * prefs.systemLag;
 
-    float projectedWeight = currentWeight + (flowRate * activeFactor);
+    float staticDrippage = flowCompBias[currentProfileIndex];
 
-    if (projectedWeight >= targetWeight) {
+    float projectedFinalWeight =
+        currentWeight + dynamicDrippage + staticDrippage;
+
+    if (projectedFinalWeight >= targetWeight) {
       finishBrew();
     }
   }
@@ -389,10 +366,10 @@ Shot *BrewManager::getRecentShots(int profileIndex) {
   return recentShotsProfile1;
 }
 
-float BrewManager::getFlowCompFactor(int profileIndex) {
+float BrewManager::getFlowCompBias(int profileIndex) {
   if (profileIndex == 0)
-    return flowCompFactors[0];
-  return flowCompFactors[1];
+    return flowCompBias[0];
+  return flowCompBias[1];
 }
 
 bool BrewManager::isDecafTime() {
