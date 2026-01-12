@@ -90,7 +90,7 @@ private:
 
   // flow tracking
   // number of samples to hold in our flow history
-  static const size_t FLOW_WINDOW_SIZE = 20;
+  static const size_t FLOW_WINDOW_SIZE = 10;
   FlowPoint flowBuffer[FLOW_WINDOW_SIZE] = {};
   size_t bufHead = 0;
   size_t bufCount = 0;
