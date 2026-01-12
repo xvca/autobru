@@ -237,8 +237,8 @@ void WebAPI::setupRoutes() {
           return;
         }
 
-        if (prefs.systemLag < 0.0f || prefs.systemLag > 1.0f) {
-          handleError(request, 400, "Lag must be 0 - 1");
+        if (prefs.systemLag < 0.0f || prefs.systemLag > 2.0f) {
+          handleError(request, 400, "Lag must be 0 - 2");
           return;
         }
 

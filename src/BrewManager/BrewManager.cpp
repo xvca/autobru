@@ -46,11 +46,11 @@ void BrewManager::loadSettings() {
   float lr = preferences.getFloat("lr", DEFAULT_LEARNING_RATE);
   prefs.learningRate = constrain(lr, 0.0f, 1.0f);
 
-  float lag = preferences.getFloat("lag", 0.20f);
-  prefs.systemLag = constrain(lag, 0.0f, 1.0f);
+  float lag = preferences.getFloat("lag", 1.0f);
+  prefs.systemLag = constrain(lag, 0.0f, 2.0f);
 
   flowCompBias[0] = preferences.getFloat("bias0", 1.0f);
-  flowCompBias[1] = preferences.getFloat("bias1", 2.0f);
+  flowCompBias[1] = preferences.getFloat("bias1", 1.0f);
 
   globalShotCounter = preferences.getUInt("shotCtr", 1);
 
@@ -75,7 +75,7 @@ void BrewManager::setPrefs(BrewPrefs newPrefs) {
   prefs = newPrefs;
 
   prefs.learningRate = constrain(prefs.learningRate, 0.0f, 1.0f);
-  prefs.systemLag = constrain(prefs.systemLag, 0.0f, 1.0f);
+  prefs.systemLag = constrain(prefs.systemLag, 0.0f, 2.0f);
 
   saveSettings();
 
@@ -86,7 +86,7 @@ BrewPrefs BrewManager::getPrefs() { return prefs; }
 
 void BrewManager::clearShotData() {
   flowCompBias[0] = 1.0f;
-  flowCompBias[1] = 2.0f;
+  flowCompBias[1] = 1.0f;
 
   memset(recentShotsProfile0, 0, sizeof(recentShotsProfile0));
   memset(recentShotsProfile1, 0, sizeof(recentShotsProfile1));

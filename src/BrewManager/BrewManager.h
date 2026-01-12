@@ -33,7 +33,7 @@ struct BrewPrefs {
   String timezone = "GMT0";
   int decafStartHour = -1;
   float learningRate = 0.5f;
-  float systemLag = 0.2f;
+  float systemLag = 1.0f;
 };
 
 struct Shot {
