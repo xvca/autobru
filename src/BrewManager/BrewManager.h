@@ -83,7 +83,7 @@ private:
 
   // constants
   static const uint ACTIVITY_TIMEOUT = 10 * 60 * 1000;
-  static const uint MAX_SHOT_DURATION = 60 * 1000;
+  static const uint MAX_SHOT_DURATION = 90 * 1000;
 
   static constexpr float DEFAULT_LEARNING_RATE = 0.5;
 

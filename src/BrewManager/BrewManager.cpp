@@ -238,7 +238,7 @@ void BrewManager::handleActiveState() {
   }
 
   // failsafe
-  if (getBrewTime() >= MAX_SHOT_DURATION) {
+  if (state != DRIPPING && getBrewTime() >= MAX_SHOT_DURATION) {
     finishBrew();
     return;
   }
