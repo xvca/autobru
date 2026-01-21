@@ -34,6 +34,8 @@ struct BrewPrefs {
   int decafStartHour = -1;
   float learningRate = 0.5f;
   float systemLag = 1.0f;
+  String apiUrl = "";
+  String apiToken = "";
 };
 
 struct Shot {
@@ -107,6 +109,8 @@ private:
   void loadSettings();
   void saveSettings();
   void finalizeBrew();
+  void sendAutoBrewLog();
+  int getBrewTimeSeconds();
 
   bool isDecafTime();
 

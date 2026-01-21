@@ -1,4 +1,8 @@
 #include "BrewManager.h"
+#include "WebApi.h"
+#include <ArduinoJson.h>
+#include <HTTPClient.h>
+#include <WiFiClientSecure.h>
 
 BrewManager *BrewManager::instance = nullptr;
 
@@ -29,6 +33,9 @@ void BrewManager::saveSettings() {
                        sizeof(recentShotsProfile0));
   preferences.putBytes("histP1", recentShotsProfile1,
                        sizeof(recentShotsProfile1));
+
+  preferences.putString("apiUrl", prefs.apiUrl);
+  preferences.putString("apiToken", prefs.apiToken);
 
   preferences.end();
 }
@@ -67,6 +74,9 @@ void BrewManager::loadSettings() {
   } else {
     memset(recentShotsProfile1, 0, expectedSize);
   }
+
+  prefs.apiUrl = preferences.getString("apiUrl", "");
+  prefs.apiToken = preferences.getString("apiToken", "");
 
   preferences.end();
 }
@@ -124,6 +134,11 @@ void BrewManager::finalizeBrew() {
   updateFlowBias();
   saveSettings();
   pendingBeeps = 3;
+
+  WebAPI *webApi = WebAPI::getInstance();
+  if (webApi && webApi->getWebSocketClientCount() == 0) {
+    sendAutoBrewLog();
+  }
 }
 
 void BrewManager::updateFlowBias() {
@@ -139,6 +154,52 @@ void BrewManager::updateFlowBias() {
   bias = (bias * (1.0f - alpha)) + (observedBias * alpha);
 
   bias = constrain(bias, MIN_BIAS, MAX_BIAS);
+}
+
+int BrewManager::getBrewTimeSeconds() {
+  if (brewEndTime > 0 && brewStartTime > 0) {
+    return (brewEndTime - brewStartTime) / 1000;
+  }
+  return 0;
+}
+
+void BrewManager::sendAutoBrewLog() {
+  if (prefs.apiUrl.length() == 0 || prefs.apiToken.length() == 0) {
+    DEBUG_PRINTF("Auto-brew logging not configured\n");
+    return;
+  }
+
+  HTTPClient http;
+  WiFiClient client;
+
+  String url = prefs.apiUrl + "/api/brews/auto-create";
+
+  http.begin(client, url);
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("Authorization", "Bearer " + prefs.apiToken);
+
+  JsonDocument doc;
+  doc["yieldWeight"] = currentWeight;
+  doc["brewTime"] = getBrewTimeSeconds();
+  doc["targetWeight"] = targetWeight;
+  doc["isDecaf"] = isDecafTime();
+
+  String payload;
+  serializeJson(doc, payload);
+
+  int httpCode = http.POST(payload);
+
+  if (httpCode == 201) {
+    DEBUG_PRINTF("Auto-brew logged successfully\n");
+    pendingBeeps = 4;
+  } else {
+    DEBUG_PRINTF("Failed to log brew: HTTP %d\n", httpCode);
+    if (httpCode > 0) {
+      DEBUG_PRINTF("Response: %s\n", http.getString().c_str());
+    }
+  }
+
+  http.end();
 }
 
 unsigned long BrewManager::getBrewTime() {

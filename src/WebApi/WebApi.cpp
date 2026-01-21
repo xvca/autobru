@@ -334,6 +334,35 @@ void WebAPI::setupRoutes() {
         request->send(resp);
       });
 
+  server.on("/token", HTTP_POST,
+            [this, &handleError](AsyncWebServerRequest *request) {
+              if (!request->hasParam("apiUrl", true) ||
+                  !request->hasParam("apiToken", true)) {
+                handleError(request, 400, "Missing required parameters");
+                return;
+              }
+
+              BrewPrefs prefs = bManager->getPrefs();
+              prefs.apiUrl = request->getParam("apiUrl", true)->value();
+              prefs.apiToken = request->getParam("apiToken", true)->value();
+
+              bManager->setPrefs(prefs);
+
+              AsyncWebServerResponse *response = request->beginResponse(
+                  200, "application/json",
+                  "{\"message\": \"Token configured successfully\"}");
+              response->addHeader("Access-Control-Allow-Origin", "*");
+              request->send(response);
+            });
+
+  server.on("/token", HTTP_OPTIONS, [](AsyncWebServerRequest *request) {
+    AsyncWebServerResponse *response = request->beginResponse(204);
+    response->addHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    response->addHeader("Access-Control-Allow-Headers", "Content-Type");
+    response->addHeader("Access-Control-Allow-Origin", "*");
+    request->send(response);
+  });
+
   // Add OPTIONS handlers for CORS
   server.on("/start", HTTP_OPTIONS, [](AsyncWebServerRequest *request) {
     AsyncWebServerResponse *response = request->beginResponse(204);

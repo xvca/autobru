@@ -46,6 +46,8 @@ public:
   void begin();
   void update();
 
+  int getWebSocketClientCount() { return ws.count(); }
+
   static WebAPI *getInstance() {
     if (!instance) {
       instance = new WebAPI();
