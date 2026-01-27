@@ -65,12 +65,26 @@ void WebAPI::setupWebSocket() {
 }
 
 void WebAPI::setupRoutes() {
+  DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
+  DefaultHeaders::Instance().addHeader("Access-Control-Allow-Methods",
+                                       "GET, POST, OPTIONS");
+  DefaultHeaders::Instance().addHeader("Access-Control-Allow-Headers",
+                                       "Content-Type, Authorization");
+  DefaultHeaders::Instance().addHeader("Access-Control-Allow-Private-Network",
+                                       "true");
+
+  server.onNotFound([](AsyncWebServerRequest *request) {
+    if (request->method() == HTTP_OPTIONS) {
+      request->send(204);
+    } else {
+      request->send(404, "application/json", "{\"error\":\"Not Found\"}");
+    }
+  });
+
   auto handleError = [](AsyncWebServerRequest *request, int code,
                         const char *message) {
-    AsyncWebServerResponse *response = request->beginResponse(
-        code, "application/json", "{\"error\": \"" + String(message) + "\"}");
-    response->addHeader("Access-Control-Allow-Origin", "*");
-    request->send(response);
+    request->send(code, "application/json",
+                  "{\"error\": \"" + String(message) + "\"}");
   };
 
   server.on(
@@ -117,7 +131,6 @@ void WebAPI::setupRoutes() {
             200, "application/json",
             "{\"message\": \"Brew started\", \"target\": " +
                 String(targetWeight) + "}");
-        response->addHeader("Access-Control-Allow-Origin", "*");
         request->send(response);
 
         return true;
@@ -141,7 +154,6 @@ void WebAPI::setupRoutes() {
 
         AsyncWebServerResponse *response = request->beginResponse(
             200, "application/json", "{\"message\": \"Brew stopped\"}");
-        response->addHeader("Access-Control-Allow-Origin", "*");
         request->send(response);
 
         return true;
@@ -166,7 +178,6 @@ void WebAPI::setupRoutes() {
 
         AsyncWebServerResponse *response = request->beginResponse(
             200, "application/json", "{\"message\": \"Shot data cleared\"}");
-        response->addHeader("Access-Control-Allow-Origin", "*");
         request->send(response);
 
         return true;
@@ -187,7 +198,6 @@ void WebAPI::setupRoutes() {
 
               AsyncWebServerResponse *response = request->beginResponse(
                   200, "application/json", "{\"message\": \"Waking ESP\"}");
-              response->addHeader("Access-Control-Allow-Origin", "*");
               request->send(response);
 
               return;
@@ -209,7 +219,8 @@ void WebAPI::setupRoutes() {
             !request->hasParam("decafStartHour", true) ||
             !request->hasParam("timezone", true) ||
             !request->hasParam("learningRate", true) ||
-            !request->hasParam("systemLag", true)) {
+            !request->hasParam("systemLag", true) ||
+            !request->hasParam("autoSavePreset", true)) {
           handleError(request, 400, "Missing required parameters");
           return;
         }
@@ -231,6 +242,8 @@ void WebAPI::setupRoutes() {
             request->getParam("learningRate", true)->value().toFloat();
         prefs.systemLag =
             request->getParam("systemLag", true)->value().toFloat();
+        prefs.autoSavePreset =
+            request->getParam("autoSavePreset", true)->value().equals("true");
 
         if (prefs.learningRate < 0.0f || prefs.learningRate > 1.0) {
           handleError(request, 400, "Learning Rate must be 0 - 1");
@@ -248,7 +261,6 @@ void WebAPI::setupRoutes() {
 
         AsyncWebServerResponse *response = request->beginResponse(
             200, "application/json", "{\"message\": \"Preferences updated\"}");
-        response->addHeader("Access-Control-Allow-Origin", "*");
         request->send(response);
       });
 
@@ -271,11 +283,12 @@ void WebAPI::setupRoutes() {
               response += ",\"timezone\":\"" + prefs.timezone + "\"";
               response += ",\"learningRate\":" + String(prefs.learningRate);
               response += ",\"systemLag\":" + String(prefs.systemLag);
+              response +=
+                  ",\"autoSavePreset\":" + String(prefs.autoSavePreset ? "true" : "false");
               response += "}";
 
               AsyncWebServerResponse *resp =
                   request->beginResponse(200, "application/json", response);
-              resp->addHeader("Access-Control-Allow-Origin", "*");
               request->send(resp);
             });
 
@@ -330,7 +343,6 @@ void WebAPI::setupRoutes() {
 
         AsyncWebServerResponse *resp =
             request->beginResponse(200, "application/json", response);
-        resp->addHeader("Access-Control-Allow-Origin", "*");
         request->send(resp);
       });
 
@@ -351,26 +363,8 @@ void WebAPI::setupRoutes() {
               AsyncWebServerResponse *response = request->beginResponse(
                   200, "application/json",
                   "{\"message\": \"Token configured successfully\"}");
-              response->addHeader("Access-Control-Allow-Origin", "*");
               request->send(response);
             });
-
-  server.on("/token", HTTP_OPTIONS, [](AsyncWebServerRequest *request) {
-    AsyncWebServerResponse *response = request->beginResponse(204);
-    response->addHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-    response->addHeader("Access-Control-Allow-Headers", "Content-Type");
-    response->addHeader("Access-Control-Allow-Origin", "*");
-    request->send(response);
-  });
-
-  // Add OPTIONS handlers for CORS
-  server.on("/start", HTTP_OPTIONS, [](AsyncWebServerRequest *request) {
-    AsyncWebServerResponse *response = request->beginResponse(204);
-    response->addHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-    response->addHeader("Access-Control-Allow-Headers", "Content-Type");
-    response->addHeader("Access-Control-Allow-Origin", "*");
-    request->send(response);
-  });
 }
 
 void WebAPI::begin() {

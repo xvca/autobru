@@ -36,6 +36,7 @@ struct BrewPrefs {
   float systemLag = 1.0f;
   String apiUrl = "";
   String apiToken = "";
+  bool autoSavePreset = false;
 };
 
 struct Shot {

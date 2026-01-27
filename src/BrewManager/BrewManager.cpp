@@ -2,7 +2,6 @@
 #include "WebApi.h"
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
-#include <WiFiClientSecure.h>
 
 BrewManager *BrewManager::instance = nullptr;
 
@@ -36,6 +35,7 @@ void BrewManager::saveSettings() {
 
   preferences.putString("apiUrl", prefs.apiUrl);
   preferences.putString("apiToken", prefs.apiToken);
+  preferences.putBool("autoSave", prefs.autoSavePreset);
 
   preferences.end();
 }
@@ -77,6 +77,7 @@ void BrewManager::loadSettings() {
 
   prefs.apiUrl = preferences.getString("apiUrl", "");
   prefs.apiToken = preferences.getString("apiToken", "");
+  prefs.autoSavePreset = preferences.getBool("autoSave", false);
 
   preferences.end();
 }
@@ -132,6 +133,15 @@ void BrewManager::finalizeBrew() {
                     .stopWeight = stopWeight};
 
   updateFlowBias();
+
+  if (prefs.autoSavePreset) {
+    if (isDecafTime()) {
+      prefs.decafPreset = targetWeight;
+    } else {
+      prefs.regularPreset = targetWeight;
+    }
+  }
+
   saveSettings();
   pendingBeeps = 3;
 
@@ -179,9 +189,8 @@ void BrewManager::sendAutoBrewLog() {
   http.addHeader("Authorization", "Bearer " + prefs.apiToken);
 
   JsonDocument doc;
-  doc["yieldWeight"] = currentWeight;
+  doc["yieldWeight"] = targetWeight;
   doc["brewTime"] = getBrewTimeSeconds();
-  doc["targetWeight"] = targetWeight;
   doc["isDecaf"] = isDecafTime();
 
   String payload;
