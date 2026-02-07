@@ -53,7 +53,7 @@ void BrewManager::loadSettings() {
   float lr = preferences.getFloat("lr", DEFAULT_LEARNING_RATE);
   prefs.learningRate = constrain(lr, 0.0f, 1.0f);
 
-  float lag = preferences.getFloat("lag", 1.0f);
+  float lag = preferences.getFloat("lag", 0.8f);
   prefs.systemLag = constrain(lag, 0.0f, 2.0f);
 
   flowCompBias[0] = preferences.getFloat("bias0", 1.0f);
@@ -391,7 +391,7 @@ bool BrewManager::abortBrew(bool shouldTriggerRelay) {
   // user pressed the button so machine is stopping physically, just need to
   // reset logic
 
-  if (state == IDLE)
+  if (state == IDLE || state == DRIPPING)
     return false;
 
   if (state == PREINFUSION) {
