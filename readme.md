@@ -49,8 +49,7 @@ You can configure two weight presets via the `/prefs` endpoint (or the Bru setti
 *   **1-Cup Button:** Starts a shot with the **half preset weight** as the target (nice to have if brewing single shots with a spouted portafilter).
 *   **2-Cup Button:** Currently, this just wakes the ESP if it's sleeping. I use it to purge my machine mainly. It doesn't trigger a specific functionality by default, but since you have the source code, you can map this to whatever you want!
 
-*Note:* If you use **Weight-Triggered Pre-infusion**, preferably use the Manual button. It allows the ESP to hold the pre-infusion for an arbitrary duration until the first drops hit the cup. Doing this on the volumetric (1-cup/2-cup) buttons requires some funky workarounds to stop and restart the shot logic. That logic is already implemented but I would consider it experimental/unstable.
-
+*Note on Weight-Triggered Pre-infusion:* When this mode is enabled, pressing either the **Manual** or **1-Cup** button will trigger a special sequence. The firmware will quickly stop the initial brew you started and then take over, holding the machine in low-pressure pre-infusion until the first drops hit the cup. This allows for consistent, weight-based pre-infusion regardless of which button you press.
 
 ## API & Automation
 

@@ -268,34 +268,29 @@ void BrewManager::handleIdleState() {
   if (waitingForMacro) {
     if (machine.isMacroComplete()) {
       waitingForMacro = false;
-      // macro only runs when weight triggered preinfusion is enabled and user
-      // triggers a brew using the one cup button which doesn't support
-      // arbitrary length preinfusion on hold so we can take the regular/decaf
-      // preset and half it to get the target
-      float target =
-          isDecafTime() ? prefs.decafPreset / 2 : prefs.regularPreset / 2;
-      startBrew(target, false);
+      // The macro has finished, and it has initiated a relay hold.
+      // The target weight was already set before the macro was started.
+      // We can now start the brew logic.
+      startBrew(targetWeight, false);
     }
     return;
   }
 
   float baseTarget = prefs.regularPreset;
-
   if (isDecafTime()) {
     baseTarget = prefs.decafPreset;
   }
 
-  if (machine.isManualStart()) {
-    startBrew(baseTarget, false);
-  } else if (machine.isOneCupStart()) {
+  const bool manualStart = machine.isManualStart();
+  const bool oneCupStart = machine.isOneCupStart();
 
-    float halfTarget = baseTarget / 2.0f;
-
+  if (manualStart || oneCupStart) {
+    targetWeight = manualStart ? baseTarget : baseTarget / 2.0f;
     if (prefs.pMode == WEIGHT_TRIGGERED) {
       machine.startPreinfusionMacro();
       waitingForMacro = true;
     } else {
-      startBrew(halfTarget, false);
+      startBrew(targetWeight, false);
     }
   }
 }
