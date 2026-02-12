@@ -286,7 +286,7 @@ void BrewManager::handleIdleState() {
   }
 
   if (machine.isManualStart()) {
-    startBrew(baseTarget, false);
+    startBrew(baseTarget, true);
   } else if (machine.isOneCupStart()) {
 
     float halfTarget = baseTarget / 2.0f;
