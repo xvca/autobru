@@ -31,7 +31,7 @@ void MachineController::update() {
 
       macroStep = 1;
 
-      macroNextActionTime = millis() + 200;
+      macroNextActionTime = millis() + 500;
     } else if (macroStep == 1 && millis() >= macroNextActionTime) {
       // now we can start proper preinfusion via the relay;
       holdRelay();
