@@ -25,7 +25,7 @@ void MachineController::update() {
 
   if (macroRunning) {
     if (macroStep == 0 && millis() >= macroNextActionTime) {
-      // 100ms have passed since user pressed the brew button, we click the
+      // 200ms have passed since user pressed the brew button, we click the
       // relay to stop that brew
       clickRelay();
 
