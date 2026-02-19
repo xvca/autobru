@@ -36,6 +36,7 @@ void BrewManager::saveSettings() {
   preferences.putString("apiUrl", prefs.apiUrl);
   preferences.putString("apiToken", prefs.apiToken);
   preferences.putBool("autoSave", prefs.autoSavePreset);
+  preferences.putBool("earlyStop", prefs.earlyStop);
 
   preferences.end();
 }
@@ -78,6 +79,7 @@ void BrewManager::loadSettings() {
   prefs.apiUrl = preferences.getString("apiUrl", "");
   prefs.apiToken = preferences.getString("apiToken", "");
   prefs.autoSavePreset = preferences.getBool("autoSave", false);
+  prefs.earlyStop = preferences.getBool("earlyStop", false);
 
   preferences.end();
 }
@@ -350,9 +352,22 @@ void BrewManager::handleActiveState() {
   }
 
   // transition dripping -> idle
-  if (state == DRIPPING && millis() >= brewEndTime + DRIP_SETTLE_TIME) {
-    finalizeBrew();
-    state = IDLE;
+  if (state == DRIPPING) {
+    if (prefs.earlyStop) {
+      if (currentWeight >= earlyStopBaseWeight + 0.1f) {
+        earlyStopBaseWeight = currentWeight;
+        earlyStopBaseTime = millis();
+      } else if (millis() - earlyStopBaseTime >= 2000) {
+        finalizeBrew();
+        state = IDLE;
+        return;
+      }
+    }
+
+    if (millis() >= brewEndTime + DRIP_SETTLE_TIME) {
+      finalizeBrew();
+      state = IDLE;
+    }
   }
 }
 
@@ -425,6 +440,9 @@ bool BrewManager::finishBrew() {
   brewEndTime = millis();
   lastFlowRate = sManager->getFlowRate();
   stopWeight = sManager->getWeight();
+
+  earlyStopBaseTime = brewEndTime;
+  earlyStopBaseWeight = stopWeight;
 
   sManager->stopTimer();
   return true;
