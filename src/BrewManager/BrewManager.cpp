@@ -154,18 +154,59 @@ void BrewManager::finalizeBrew() {
 }
 
 void BrewManager::updateFlowBias() {
-  float totalDrippage = currentWeight - stopWeight;
+  // Use recent history to perform a linear regression to separate
+  // dynamic lag (Slope) from static bias (Intercept)
+  // Model: Drippage = (FlowRate * Lag) + Bias
 
-  float lagComponent = lastFlowRate * prefs.systemLag;
+  Shot *history =
+      (currentProfileIndex == 0) ? recentShotsProfile0 : recentShotsProfile1;
+  int n = 0;
+  double sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
 
-  float observedBias = totalDrippage - lagComponent;
+  for (int i = 0; i < MAX_HISTORY; i++) {
+    if (history[i].id == 0) continue; // Check for valid shot data (id > 0)
+    if (history[i].lastFlowRate < 0.2f) continue; // Filter out very low flow rates that might distort linearity or cause div/0
 
+    float y = history[i].finalWeight - history[i].stopWeight; // Total Drippage
+    float x = history[i].lastFlowRate;
+
+    sumX += x;
+    sumY += y;
+    sumXY += (x * y);
+    sumX2 += (x * x);
+    n++;
+  }
+
+  // Need at least a few points to do a decent regression
+  if (n < 3)
+    return;
+
+  double denominator = (n * sumX2 - sumX * sumX);
+  float calculatedLag = prefs.systemLag;
+  float calculatedBias = flowCompBias[currentProfileIndex];
+
+  // If variance is too low (denominator close to 0), we can't solve for slope
+  // separately. In that case, assume current Lag is correct and just solve for
+  // Bias to center the error.
+  if (abs(denominator) > 0.1) {
+    calculatedLag = (n * sumXY - sumX * sumY) / denominator;
+    calculatedBias = (sumY - calculatedLag * sumX) / n;
+  } else {
+    // Low variance fallback: Bias = Mean(Y) - Lag * Mean(X)
+    calculatedBias = (sumY / n) - (prefs.systemLag * (sumX / n));
+  }
+
+  // Sanity constraints to prevent big swings and handle bad data
+  calculatedLag = constrain(calculatedLag, 0.0f, 2.0f);
+  calculatedBias = constrain(calculatedBias, MIN_BIAS, MAX_BIAS);
+
+  // Apply learning rate to smooth the changes
   float alpha = prefs.learningRate;
-  float &bias = flowCompBias[currentProfileIndex];
 
-  bias = (bias * (1.0f - alpha)) + (observedBias * alpha);
-
-  bias = constrain(bias, MIN_BIAS, MAX_BIAS);
+  prefs.systemLag = (prefs.systemLag * (1.0f - alpha)) + (calculatedLag * alpha);
+  flowCompBias[currentProfileIndex] =
+      (flowCompBias[currentProfileIndex] * (1.0f - alpha)) +
+      (calculatedBias * alpha);
 }
 
 int BrewManager::getBrewTimeSeconds() {
