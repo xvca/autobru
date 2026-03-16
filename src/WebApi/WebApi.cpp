@@ -324,6 +324,9 @@ void WebAPI::setupRoutes() {
                       ",\"targetWeight\":" + String(shots0[i].targetWeight) +
                       ",\"finalWeight\":" + String(shots0[i].finalWeight) +
                       ",\"lastFlowRate\":" + String(shots0[i].lastFlowRate) +
+                      ",\"stopWeight\":" + String(shots0[i].stopWeight) +
+                      ",\"drippage\":" +
+                      String(shots0[i].finalWeight - shots0[i].stopWeight) +
                       "}";
         }
         response += "]},";
@@ -340,6 +343,9 @@ void WebAPI::setupRoutes() {
                       ",\"targetWeight\":" + String(shots1[i].targetWeight) +
                       ",\"finalWeight\":" + String(shots1[i].finalWeight) +
                       ",\"lastFlowRate\":" + String(shots1[i].lastFlowRate) +
+                      ",\"stopWeight\":" + String(shots1[i].stopWeight) +
+                      ",\"drippage\":" +
+                      String(shots1[i].finalWeight - shots1[i].stopWeight) +
                       "}";
         }
         response += "]}";
