@@ -357,7 +357,7 @@ void BrewManager::handleActiveState() {
       if (currentWeight >= earlyStopBaseWeight + 0.1f) {
         earlyStopBaseWeight = currentWeight;
         earlyStopBaseTime = millis();
-      } else if (millis() - earlyStopBaseTime >= 2000) {
+      } else if (millis() - earlyStopBaseTime >= 2500) {
         finalizeBrew();
         state = IDLE;
         return;
