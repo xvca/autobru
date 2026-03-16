@@ -220,7 +220,8 @@ void WebAPI::setupRoutes() {
             !request->hasParam("timezone", true) ||
             !request->hasParam("learningRate", true) ||
             !request->hasParam("systemLag", true) ||
-            !request->hasParam("autoSavePreset", true)) {
+            !request->hasParam("autoSavePreset", true) ||
+            !request->hasParam("earlyStop", true)) {
           handleError(request, 400, "Missing required parameters");
           return;
         }
@@ -244,6 +245,8 @@ void WebAPI::setupRoutes() {
             request->getParam("systemLag", true)->value().toFloat();
         prefs.autoSavePreset =
             request->getParam("autoSavePreset", true)->value().equals("true");
+        prefs.earlyStop =
+            request->getParam("earlyStop", true)->value().equals("true");
 
         if (prefs.learningRate < 0.0f || prefs.learningRate > 1.0) {
           handleError(request, 400, "Learning Rate must be 0 - 1");
@@ -285,6 +288,8 @@ void WebAPI::setupRoutes() {
               response += ",\"systemLag\":" + String(prefs.systemLag);
               response +=
                   ",\"autoSavePreset\":" + String(prefs.autoSavePreset ? "true" : "false");
+              response +=
+                  ",\"earlyStop\":" + String(prefs.earlyStop ? "true" : "false");
               response += "}";
 
               AsyncWebServerResponse *resp =

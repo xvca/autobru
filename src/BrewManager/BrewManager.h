@@ -37,6 +37,7 @@ struct BrewPrefs {
   String apiUrl = "";
   String apiToken = "";
   bool autoSavePreset = false;
+  bool earlyStop = false;
 };
 
 struct Shot {
@@ -79,6 +80,9 @@ private:
   ulong brewStartTime = 0;
   ulong brewEndTime = 0;
   ulong lastActiveTime = 0;
+
+  ulong earlyStopBaseTime = 0;
+  float earlyStopBaseWeight = 0.0f;
 
   // beep stuff
   int pendingBeeps = 0;
