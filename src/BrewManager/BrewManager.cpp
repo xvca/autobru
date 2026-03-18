@@ -2,6 +2,8 @@
 #include "WebApi.h"
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
+#include <algorithm> // Required for std::sort
+#include <cmath>     // Required for fabs, sqrt
 
 BrewManager *BrewManager::instance = nullptr;
 
@@ -134,7 +136,7 @@ void BrewManager::finalizeBrew() {
                     .lastFlowRate = lastFlowRate,
                     .stopWeight = stopWeight};
 
-  updateFlowBias();
+  updateFlowModel();
 
   if (prefs.autoSavePreset) {
     if (isDecafTime()) {
@@ -153,22 +155,58 @@ void BrewManager::finalizeBrew() {
   }
 }
 
-void BrewManager::updateFlowBias() {
-  // Use recent history to perform a linear regression to separate
-  // dynamic lag (Slope) from static bias (Intercept)
-  // Model: Drippage = (FlowRate * Lag) + Bias
-
+void BrewManager::updateFlowModel() {
+  // Linear regression model to separate dynamic lag (Slope) from static bias (Intercept)
+  // Model: Total Drippage = (FlowRate * SystemLag) + FlowCompBias
+  // Outlier rejection using Median Absolute Deviation (MAD) to ensure outliers don't skew the model.
+  
   Shot *history =
       (currentProfileIndex == 0) ? recentShotsProfile0 : recentShotsProfile1;
+
+  float residuals[MAX_HISTORY];
+  int validCount = 0;
+
+  // --- PASS 1: Calculate Residuals based on current model ---
+  for (int i = 0; i < MAX_HISTORY; i++) {
+    if (history[i].id == 0 || history[i].lastFlowRate < 0.2f) continue;
+    
+    float actualDrip = history[i].finalWeight - history[i].stopWeight;
+    float predictedDrip = (history[i].lastFlowRate * prefs.systemLag) + flowCompBias[currentProfileIndex];
+    
+    residuals[validCount++] = actualDrip - predictedDrip;
+  }
+
+  if (validCount < 5) return; // Need a baseline to define "normal" or MAD won't be meaningful
+
+  // --- PASS 2: Calculate MAD ---
+  std::sort(residuals, residuals + validCount);
+  float medianRes = residuals[validCount / 2];
+
+  float absDeviations[MAX_HISTORY];
+  for (int i = 0; i < validCount; i++) {
+    absDeviations[i] = std::fabs(residuals[i] - medianRes);
+  }
+  std::sort(absDeviations, absDeviations + validCount);
+  
+  // Scaled MAD (1.4826 makes it comparable to Standard Deviation). 
+  // Floor of 0.05f prevents overly aggressive rejection or division by zero.
+  float scaledMAD = std::max(0.05f, absDeviations[validCount / 2] * 1.4826f);
+  
+  // --- PASS 3: Perform LMS Regression on "Clean" Data ---
   int n = 0;
   double sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
 
   for (int i = 0; i < MAX_HISTORY; i++) {
-    if (history[i].id == 0) continue; // Check for valid shot data (id > 0)
-    if (history[i].lastFlowRate < 0.2f) continue; // Filter out very low flow rates that might distort linearity or cause div/0
+    if (history[i].id == 0 || history[i].lastFlowRate < 0.2f) continue;
 
     float y = history[i].finalWeight - history[i].stopWeight; // Total Drippage
     float x = history[i].lastFlowRate;
+    float res = y - ((x * prefs.systemLag) + flowCompBias[currentProfileIndex]);
+
+    // REJECTION: 3 'standard deviations' is a conservative threshold (99.7% of normal data)
+    if (std::fabs(res - medianRes) > (3.0f * scaledMAD)) {
+      continue; 
+    }
 
     sumX += x;
     sumY += y;
@@ -177,7 +215,7 @@ void BrewManager::updateFlowBias() {
     n++;
   }
 
-  // Need at least a few points to do a decent regression
+  // Need at least a few points to compute a meaningful slope
   if (n < 3)
     return;
 
@@ -185,18 +223,16 @@ void BrewManager::updateFlowBias() {
   float calculatedLag = prefs.systemLag;
   float calculatedBias = flowCompBias[currentProfileIndex];
 
-  // If variance is too low (denominator close to 0), we can't solve for slope
-  // separately. In that case, assume current Lag is correct and just solve for
-  // Bias to center the error.
-  if (abs(denominator) > 0.1) {
+  // If variance is sufficient, solve for slope (Lag) and intercept (Bias)
+  if (std::fabs(denominator) > 0.1) {
     calculatedLag = (n * sumXY - sumX * sumY) / denominator;
     calculatedBias = (sumY - calculatedLag * sumX) / n;
   } else {
-    // Low variance fallback: Bias = Mean(Y) - Lag * Mean(X)
+    // Low variance fallback: Assume current Lag is correct, just solve for Bias to center the error
     calculatedBias = (sumY / n) - (prefs.systemLag * (sumX / n));
   }
 
-  // Sanity constraints to prevent big swings and handle bad data
+// --- PASS 4: Apply Constraints and Learning Rate ---
   calculatedLag = constrain(calculatedLag, 0.0f, 2.0f);
   calculatedBias = constrain(calculatedBias, MIN_BIAS, MAX_BIAS);
 
