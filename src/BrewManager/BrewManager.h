@@ -110,7 +110,7 @@ private:
   int currentProfileIndex = 1;
 
   // helpers
-  void updateFlowBias();
+  void updateFlowModel();
   void loadSettings();
   void saveSettings();
   void finalizeBrew();
