@@ -102,9 +102,6 @@ private:
 
   static constexpr ulong DRIP_SETTLE_TIME = 10 * 1000;
 
-  // threshold to decide between profile 0 (split shots) and profile 1 (full)
-  static constexpr float PROFILE_THRESHOLD_WEIGHT = 28.0f;
-
   // seperate history for each profile to prevent learning pollution
   Shot recentShotsProfile0[MAX_HISTORY];
   Shot recentShotsProfile1[MAX_HISTORY];
@@ -142,7 +139,7 @@ public:
   // startBrew called by API or logic
   // if shouldTriggerRelay = false, assume the button is already being pressed
   // by the user/macro
-  bool startBrew(float target, bool shouldTriggerRelay = false);
+  bool startBrew(float target, bool shouldTriggerRelay = false, int profileId = 1);
 
   // user pressed a button, cancelling brew, doesn't trigger relay
   bool abortBrew(bool shouldTriggerRelay = false);

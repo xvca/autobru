@@ -353,7 +353,7 @@ void BrewManager::handleIdleState() {
   if (waitingForMacro) {
     if (machine.isMacroComplete()) {
       waitingForMacro = false;
-      startBrew(macroTargetWeight, false);
+        startBrew(macroTargetWeight, false, 0);
     }
     return;
   }
@@ -368,7 +368,7 @@ void BrewManager::handleIdleState() {
       prefs.swapButtons ? machine.isTwoCupStart() : machine.isOneCupStart();
 
   if (machine.isManualStart()) {
-    startBrew(baseTarget, true);
+    startBrew(baseTarget, true, 1);
   } else if (brewButtonPressed) {
 
     float brewTarget = baseTarget;
@@ -381,7 +381,7 @@ void BrewManager::handleIdleState() {
       machine.startPreinfusionMacro();
       waitingForMacro = true;
     } else {
-      startBrew(brewTarget, false);
+      startBrew(brewTarget, false, 0);
     }
   }
 }
@@ -455,18 +455,14 @@ void BrewManager::handleActiveState() {
   }
 }
 
-bool BrewManager::startBrew(float target, bool shouldTriggerRelay) {
+bool BrewManager::startBrew(float target, bool shouldTriggerRelay, int profileId) {
   if (!prefs.isEnabled || !sManager->isConnected() || isBrewing())
     return false;
 
   targetWeight = target;
   lastActiveTime = millis();
 
-  if (targetWeight < PROFILE_THRESHOLD_WEIGHT) {
-    currentProfileIndex = 0;
-  } else {
-    currentProfileIndex = 1;
-  }
+  currentProfileIndex = profileId;
 
   brewStartTime = millis();
   sManager->startAndTare();
