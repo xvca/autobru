@@ -9,6 +9,8 @@
 class ScaleManager;
 
 static constexpr int MAX_HISTORY = 20;
+static constexpr float DEFAULT_MAX_SHOT_WEIGHT = 100.0f;
+static constexpr float MAX_CONFIGURABLE_SHOT_WEIGHT = 1000.0f;
 
 /**
  * IDLE         -> Waiting for user input
@@ -29,6 +31,7 @@ struct BrewPrefs {
   bool isEnabled = true;
   float regularPreset = 40.0f;
   float decafPreset = 40.0f;
+  float maxShotWeight = DEFAULT_MAX_SHOT_WEIGHT;
   PreinfusionMode pMode = SIMPLE;
   String timezone = "GMT0";
   int decafStartHour = -1;
@@ -36,6 +39,7 @@ struct BrewPrefs {
   float systemLag = 1.0f;
   String apiUrl = "";
   String apiToken = "";
+  int apiBarId = 0;
   bool autoSavePreset = false;
   bool earlyStop = false;
   bool swapButtons = false;
@@ -113,6 +117,7 @@ private:
   void updateFlowModel();
   void loadSettings();
   void saveSettings();
+  void normalizeShotLimits();
   void finalizeBrew();
   void sendAutoBrewLog();
   int getBrewTimeSeconds();
@@ -154,6 +159,7 @@ public:
   bool isEnabled() const { return prefs.isEnabled; }
   BrewState getState() const { return state; }
   float getTargetWeight() const { return targetWeight; }
+  bool isValidTargetWeight(float target) const;
   ulong getBrewTime();
 
   void clearShotData();

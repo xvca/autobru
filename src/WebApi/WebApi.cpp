@@ -6,6 +6,7 @@
 #include <ArduinoOTA.h>
 #include <WiFi.h>
 #include <cstdint>
+#include <cmath>
 
 WebAPI *WebAPI::instance = nullptr;
 
@@ -110,9 +111,10 @@ void WebAPI::setupRoutes() {
 
         float targetWeight =
             request->getParam("weight", true)->value().toFloat();
-        if (targetWeight <= 0 || targetWeight > 100) {
-          handleError(request, 400,
-                      "Invalid target weight (must be between 0-100g)");
+        if (!bManager->isValidTargetWeight(targetWeight)) {
+          String message = "Invalid target weight (must be > 0 and <= " +
+                           String(bManager->getPrefs().maxShotWeight) + "g)";
+          handleError(request, 400, message.c_str());
           return false;
         }
 
@@ -229,7 +231,21 @@ void WebAPI::setupRoutes() {
           return;
         }
 
-        BrewPrefs prefs;
+        BrewPrefs prefs = bManager->getPrefs();
+        if (request->hasParam("maxShotWeight", true)) {
+          prefs.maxShotWeight =
+              request->getParam("maxShotWeight", true)->value().toFloat();
+        }
+        if (!std::isfinite(prefs.maxShotWeight) || prefs.maxShotWeight < 1.0f ||
+            prefs.maxShotWeight > MAX_CONFIGURABLE_SHOT_WEIGHT) {
+          handleError(request, 400, "Maximum shot yield must be between 1-1000g");
+          return;
+        }
+        if (bManager->isBrewing() &&
+            prefs.maxShotWeight != bManager->getPrefs().maxShotWeight) {
+          handleError(request, 400, "Cannot change maximum shot yield during a brew");
+          return;
+        }
 
         prefs.isEnabled =
             request->getParam("isEnabled", true)->value().equals("true");
@@ -254,6 +270,16 @@ void WebAPI::setupRoutes() {
             request->getParam("swapButtons", true)->value().equals("true");
         prefs.halfForTwoCup =
             request->getParam("halfForTwoCup", true)->value().equals("true");
+
+        if (!std::isfinite(prefs.regularPreset) ||
+            !std::isfinite(prefs.decafPreset) || prefs.regularPreset < 1.0f ||
+            prefs.decafPreset < 1.0f || prefs.regularPreset > prefs.maxShotWeight ||
+            prefs.decafPreset > prefs.maxShotWeight) {
+          String message = "Preset weights must be between 1 and " +
+                           String(prefs.maxShotWeight) + "g";
+          handleError(request, 400, message.c_str());
+          return;
+        }
 
         if (prefs.learningRate < 0.0f || prefs.learningRate > 1.0) {
           handleError(request, 400, "Learning Rate must be 0 - 1");
@@ -287,6 +313,7 @@ void WebAPI::setupRoutes() {
               doc["isEnabled"] = prefs.isEnabled;
               doc["regularPreset"] = prefs.regularPreset;
               doc["decafPreset"] = prefs.decafPreset;
+              doc["maxShotWeight"] = prefs.maxShotWeight;
               doc["pMode"] = prefs.pMode;
               doc["decafStartHour"] = prefs.decafStartHour;
               doc["timezone"] = prefs.timezone;
@@ -296,6 +323,17 @@ void WebAPI::setupRoutes() {
               doc["earlyStop"] = prefs.earlyStop;
               doc["swapButtons"] = prefs.swapButtons;
               doc["halfForTwoCup"] = prefs.halfForTwoCup;
+
+              bool loggingConfigured =
+                  prefs.apiUrl.length() > 0 && prefs.apiToken.length() > 0;
+              JsonObject autoLogging = doc["autoLogging"].to<JsonObject>();
+              autoLogging["configured"] = loggingConfigured;
+              autoLogging["apiUrl"] = loggingConfigured ? prefs.apiUrl : "";
+              if (loggingConfigured && prefs.apiBarId > 0) {
+                autoLogging["barId"] = prefs.apiBarId;
+              } else {
+                autoLogging["barId"] = nullptr;
+              }
 
               String response;
               serializeJson(doc, response);
@@ -376,6 +414,17 @@ void WebAPI::setupRoutes() {
               BrewPrefs prefs = bManager->getPrefs();
               prefs.apiUrl = request->getParam("apiUrl", true)->value();
               prefs.apiToken = request->getParam("apiToken", true)->value();
+              prefs.apiBarId = 0;
+              if (prefs.apiUrl.length() > 0 && prefs.apiToken.length() > 0 &&
+                  request->hasParam("barId", true)) {
+                String value = request->getParam("barId", true)->value();
+                int barId = value.toInt();
+                if (barId <= 0 || String(barId) != value) {
+                  handleError(request, 400, "Invalid brew bar ID");
+                  return;
+                }
+                prefs.apiBarId = barId;
+              }
 
               bManager->setPrefs(prefs);
 

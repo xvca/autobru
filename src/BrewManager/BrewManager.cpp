@@ -20,6 +20,7 @@ void BrewManager::saveSettings() {
   preferences.putBool("enabled", prefs.isEnabled);
   preferences.putFloat("reg", prefs.regularPreset);
   preferences.putFloat("dec", prefs.decafPreset);
+  preferences.putFloat("maxShotWeight", prefs.maxShotWeight);
   preferences.putInt("decHr", prefs.decafStartHour);
   preferences.putString("tz", prefs.timezone);
   preferences.putInt("pmode", (int)prefs.pMode);
@@ -37,6 +38,7 @@ void BrewManager::saveSettings() {
 
   preferences.putString("apiUrl", prefs.apiUrl);
   preferences.putString("apiToken", prefs.apiToken);
+  preferences.putInt("apiBarId", prefs.apiBarId);
   preferences.putBool("autoSave", prefs.autoSavePreset);
   preferences.putBool("earlyStop", prefs.earlyStop);
   preferences.putBool("swapButtons", prefs.swapButtons);
@@ -52,6 +54,9 @@ void BrewManager::loadSettings() {
   prefs.regularPreset = preferences.getFloat("reg", 40.0f);
   prefs.timezone = preferences.getString("tz", "GMT0");
   prefs.decafPreset = preferences.getFloat("dec", 40.0f);
+  prefs.maxShotWeight =
+      preferences.getFloat("maxShotWeight", DEFAULT_MAX_SHOT_WEIGHT);
+  normalizeShotLimits();
   prefs.decafStartHour = preferences.getInt("decHr", -1);
   prefs.pMode = PreinfusionMode(preferences.getInt("pmode", 0));
 
@@ -82,6 +87,7 @@ void BrewManager::loadSettings() {
 
   prefs.apiUrl = preferences.getString("apiUrl", "");
   prefs.apiToken = preferences.getString("apiToken", "");
+  prefs.apiBarId = preferences.getInt("apiBarId", 0);
   prefs.autoSavePreset = preferences.getBool("autoSave", false);
   prefs.earlyStop = preferences.getBool("earlyStop", false);
   prefs.swapButtons = preferences.getBool("swapButtons", false);
@@ -90,8 +96,25 @@ void BrewManager::loadSettings() {
   preferences.end();
 }
 
+void BrewManager::normalizeShotLimits() {
+  if (!std::isfinite(prefs.maxShotWeight) || prefs.maxShotWeight < 1.0f ||
+      prefs.maxShotWeight > MAX_CONFIGURABLE_SHOT_WEIGHT) {
+    prefs.maxShotWeight = DEFAULT_MAX_SHOT_WEIGHT;
+  }
+
+  if (!std::isfinite(prefs.regularPreset)) prefs.regularPreset = 40.0f;
+  if (!std::isfinite(prefs.decafPreset)) prefs.decafPreset = 40.0f;
+  prefs.regularPreset = constrain(prefs.regularPreset, 1.0f, prefs.maxShotWeight);
+  prefs.decafPreset = constrain(prefs.decafPreset, 1.0f, prefs.maxShotWeight);
+}
+
+bool BrewManager::isValidTargetWeight(float target) const {
+  return std::isfinite(target) && target > 0.0f && target <= prefs.maxShotWeight;
+}
+
 void BrewManager::setPrefs(BrewPrefs newPrefs) {
   prefs = newPrefs;
+  normalizeShotLimits();
 
   prefs.learningRate = constrain(prefs.learningRate, 0.0f, 1.0f);
   prefs.systemLag = constrain(prefs.systemLag, 0.0f, 2.0f);
@@ -272,7 +295,9 @@ void BrewManager::sendAutoBrewLog() {
   http.addHeader("Authorization", "Bearer " + prefs.apiToken);
 
   JsonDocument doc;
+  // Bru reuses the logged yield as the next recipe's target.
   doc["yieldWeight"] = targetWeight;
+  doc["targetWeight"] = targetWeight;
   doc["brewTime"] = getBrewTimeSeconds();
   doc["isDecaf"] = isDecafTime();
 
@@ -456,7 +481,8 @@ void BrewManager::handleActiveState() {
 }
 
 bool BrewManager::startBrew(float target, bool shouldTriggerRelay, int profileId) {
-  if (!prefs.isEnabled || !sManager->isConnected() || isBrewing())
+  if (!isValidTargetWeight(target) || !prefs.isEnabled ||
+      !sManager->isConnected() || isBrewing())
     return false;
 
   targetWeight = target;
