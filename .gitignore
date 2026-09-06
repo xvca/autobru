@@ -3,3 +3,6 @@
 logs
 
 include/credentials.h
+.env
+.env.*
+!.env.example
