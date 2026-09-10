@@ -7,6 +7,9 @@
 #include <WiFi.h>
 #include <cstdint>
 #include <cmath>
+#include <algorithm>
+#include <cstring>
+#include <iterator>
 
 WebAPI *WebAPI::instance = nullptr;
 
@@ -446,7 +449,8 @@ void WebAPI::update() {
     lastClientCleanup = millis();
   }
 
-  uint32_t currentInterval = bManager->isBrewing() ? 125 : 500;
+  // Check for fresh metrics at 40 Hz; each client's sender is capped at 20 Hz.
+  uint32_t currentInterval = bManager->isBrewing() ? 25 : 500;
 
   if (millis() - lastWebSocketUpdate >= currentInterval) {
     broadcastBrewMetrics();
@@ -494,9 +498,62 @@ void WebAPI::broadcastBrewMetrics() {
                          .isActive = bManager->isActive(),
                          .isScaleConnected = scaleReady};
 
+  const uint32_t now = millis();
+  const uint8_t maxRate =
+      bManager->isBrewing() ? WS_MAX_RATE_HZ : WS_IDLE_RATE_HZ;
+
+  for (auto &sender : telemetryClients) {
+    if (sender.id != 0 && !ws.client(sender.id)) {
+      sender = {};
+    }
+  }
+
   for (AsyncWebSocketClient &c : ws.getClients()) {
-    if (c.canSend() && c.queueLen() < 5) {
-      c.binary((uint8_t *)&metrics, sizeof(BrewMetrics));
+    if (c.status() != WS_CONNECTED)
+      continue;
+
+    auto sender = std::find_if(
+        std::begin(telemetryClients), std::end(telemetryClients),
+        [&c](const TelemetryClient &s) { return s.id == c.id(); });
+    if (sender == std::end(telemetryClients)) {
+      sender = std::find_if(
+          std::begin(telemetryClients), std::end(telemetryClients),
+          [](const TelemetryClient &s) { return s.id == 0; });
+      if (sender == std::end(telemetryClients))
+        continue;
+      sender->id = c.id();
+      sender->lastAttempt = now - 1000; // Send an initial snapshot immediately.
+      sender->lastIncrease = now;
+    }
+
+    // No repeat samples or history queue: a slow client gets the latest snapshot.
+    if (sender->hasMetrics &&
+        std::memcmp(&sender->lastMetrics, &metrics, sizeof(metrics)) == 0)
+      continue;
+
+    const uint8_t rate = std::min(sender->rateHz, maxRate);
+    const uint32_t elapsed = now - sender->lastAttempt;
+    if (elapsed < 1000u / rate)
+      continue;
+    if (elapsed > WS_RATE_INCREASE_INTERVAL)
+      sender->lastIncrease = now;
+    sender->lastAttempt = now;
+
+    // queueLen includes unacknowledged messages. Back off instead of adding backlog.
+    if (c.queueLen() != 0 || !c.canSend() ||
+        !c.binary(reinterpret_cast<const uint8_t *>(&metrics), sizeof(metrics))) {
+      sender->rateHz = std::max<uint8_t>(1, rate / 2);
+      sender->lastIncrease = now;
+      continue;
+    }
+
+    sender->lastMetrics = metrics;
+    sender->hasMetrics = true;
+    // Recover additively: +1 Hz after each two seconds of healthy sending.
+    if (now - sender->lastIncrease >= WS_RATE_INCREASE_INTERVAL) {
+      if (sender->rateHz < maxRate)
+        ++sender->rateHz;
+      sender->lastIncrease = now;
     }
   }
 }
