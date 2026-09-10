@@ -570,8 +570,11 @@ bool BrewManager::isDecafTime() {
   if (prefs.decafStartHour < 0)
     return false;
 
+  // Check the clock without getLocalTime()'s wait for NTP during offline startup.
+  const time_t now = time(nullptr);
   struct tm timeinfo;
-  if (!getLocalTime(&timeinfo)) {
+  localtime_r(&now, &timeinfo);
+  if (timeinfo.tm_year <= (2016 - 1900)) {
     return false;
   }
 

@@ -15,20 +15,10 @@ WebAPI::WebAPI() : server(80), ws("/ws"), lastWebSocketUpdate(0) {}
 void WebAPI::setupWiFi() {
   WiFi.mode(WIFI_STA);
   WiFi.setHostname("autobru");
+  // Retry from update(), without holding up startup or the brew-control loop.
+  WiFi.setAutoReconnect(false);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-
-  while (WiFi.waitForConnectResult() != WL_CONNECTED) {
-    DEBUG_PRINTF("Attempting reconnect in 5...\n");
-    delay(5000);
-    WiFi.disconnect();
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  }
-
-  if (WiFi.status() == WL_CONNECTED) {
-    DEBUG_PRINTF("Connected to WiFi, IP: %s\n", WiFi.localIP().toString());
-    configTime(0, 0, "pool.ntp.org");
-    bManager->syncTimezone();
-  }
+  lastWiFiAttempt = millis();
 }
 
 void WebAPI::setupWebSocket() {
@@ -449,9 +439,11 @@ void WebAPI::begin() {
 }
 
 void WebAPI::update() {
-  if (millis() - lastWiFiCheck >= WIFI_CHECK_INTERVAL) {
-    checkWiFiConnection();
-    lastWiFiCheck = millis();
+  checkWiFiConnection();
+
+  if (millis() - lastClientCleanup >= WS_CLEANUP_INTERVAL) {
+    ws.cleanupClients(MAX_WS_CLIENTS);
+    lastClientCleanup = millis();
   }
 
   uint32_t currentInterval = bManager->isBrewing() ? 125 : 500;
@@ -463,21 +455,26 @@ void WebAPI::update() {
 }
 
 void WebAPI::checkWiFiConnection() {
-  if (WiFi.status() != WL_CONNECTED) {
+  if (WiFi.status() == WL_CONNECTED) {
+    if (!wifiConnected) {
+      DEBUG_PRINTF("Connected to WiFi, IP: %s\n",
+                   WiFi.localIP().toString().c_str());
+      configTime(0, 0, "pool.ntp.org");
+      bManager->syncTimezone();
+      wifiConnected = true;
+    }
+    return;
+  }
+
+  const uint32_t now = millis();
+  if (wifiConnected) {
+    wifiConnected = false;
+    lastWiFiAttempt = now;
+  }
+  if (now - lastWiFiAttempt >= WIFI_RETRY_INTERVAL) {
     DEBUG_PRINTF("WiFi disconnected, attempting reconnection...\n");
-    WiFi.disconnect();
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-
-    // Wait up to 10 seconds for connection
-    int attempts = 0;
-    while (WiFi.status() != WL_CONNECTED && attempts < 10) {
-      delay(1000);
-      attempts++;
-    }
-
-    if (WiFi.status() == WL_CONNECTED) {
-      DEBUG_PRINTF("Reconnected to WiFi, IP: %s\n", WiFi.localIP().toString());
-    }
+    lastWiFiAttempt = now;
+    WiFi.reconnect();
   }
 }
 

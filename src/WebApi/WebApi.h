@@ -29,10 +29,13 @@ private:
   BrewManager *bManager;
 
   ulong lastWebSocketUpdate = 0;
-  ulong lastWiFiCheck = 0;
+  uint32_t lastWiFiAttempt = 0;
+  uint32_t lastClientCleanup = 0;
+  bool wifiConnected = false;
 
   static constexpr ushort MAX_WS_CLIENTS = 8;
-  static constexpr ulong WIFI_CHECK_INTERVAL = 10 * 1000;
+  static constexpr uint32_t WIFI_RETRY_INTERVAL = 10 * 1000;
+  static constexpr uint32_t WS_CLEANUP_INTERVAL = 1000;
 
   void checkWiFiConnection();
 
@@ -47,7 +50,7 @@ public:
   void update();
 
   int getWebSocketClientCount() {
-    ws.cleanupClients();
+    ws.cleanupClients(MAX_WS_CLIENTS);
     return ws.count();
   }
 
